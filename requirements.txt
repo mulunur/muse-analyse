@@ -2,6 +2,20 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 python-multipart>=0.0.12
 python-dotenv>=1.0.1
-openai>=1.55.0
 aiofiles>=24.1.0
 essentia>=2.1b6.dev1110
+
+# LLM провайдеры
+openai>=1.55.0
+anthropic>=0.30.0
+requests>=2.31.0
+
+# Тестирование
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
+# Опциональные провайдеры (для специфических интеграций)
+# ollama - использует встроенный requests
+# nemotron - использует встроенный requests
+
+

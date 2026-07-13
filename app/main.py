@@ -19,6 +19,7 @@ from app.audio_analysis import (
     analyze_audio,
 )
 from app.config import MAX_UPLOAD_SIZE_BYTES, SUPPORTED_EXTENSIONS, STATIC_DIR, UPLOAD_DIR
+from app.llm_providers import LLMProviderFactory
 from app.review_generator import generate_review
 
 logging.basicConfig(level=logging.INFO)
@@ -44,11 +45,28 @@ async def index():
 
 @app.get("/api/health")
 async def health():
+    llm_providers = LLMProviderFactory.list_available_providers()
     return {
         "status": "ok",
         "version": __version__,
         "essentia_available": ESSENTIA_AVAILABLE,
         "essentia_error": ESSENTIA_ERROR,
+        "llm_providers": llm_providers,
+    }
+
+
+@app.get("/api/providers")
+async def list_providers():
+    """Возвращает список доступных LLM провайдеров."""
+    providers = LLMProviderFactory.list_available_providers()
+    return {
+        "available": providers,
+        "description": {
+            "openai": "OpenAI GPT (требует OPENAI_API_KEY)",
+            "claude": "Anthropic Claude (требует ANTHROPIC_API_KEY)",
+            "ollama": "Локальный Ollama (требует ollama serve)",
+            "nemotron": "NVIDIA Nemotron API (требует NEMOTRON_API_KEY)",
+        }
     }
 
 

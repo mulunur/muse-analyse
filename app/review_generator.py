@@ -1,4 +1,4 @@
-"""Генерация музыкальных обзоров: OpenAI API или шаблонный fallback."""
+"""Генерация музыкальных обзоров: OpenAI API, Claude, Ollama, Nemotron или шаблонный fallback."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from app.config import OPENAI_API_KEY, OPENAI_MODEL
+from app.llm_providers import LLMProviderFactory
 
 logger = logging.getLogger(__name__)
 
@@ -181,78 +181,31 @@ def _build_template_review(features: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_openai_prompt(features: dict[str, Any]) -> str:
-    compact = {
-        "duration_sec": features.get("duration_sec"),
-        "rhythm": features.get("rhythm"),
-        "tonal": features.get("tonal"),
-        "dynamics": features.get("dynamics"),
-        "spectral": {
-            k: v
-            for k, v in features.get("spectral", {}).items()
-            if k != "mfcc_coefficients"
-        },
-        "energy": features.get("energy"),
-    }
-    return (
-        "Ты — профессиональный музыкальный критик. На основе объективных параметров "
-        "аудиоанализа (библиотека Essentia) напиши структурированный обзор трека на русском языке.\n\n"
-        "Параметры анализа (JSON):\n"
-        f"{json.dumps(compact, ensure_ascii=False, indent=2)}\n\n"
-        "Формат ответа — JSON с полями:\n"
-        '- "score": число 1–10\n'
-        '- "sections": объект с ключами summary, rhythm, tonality, production, verdict\n'
-        '- "full_text": полный связный текст обзора\n\n'
-        "Пиши профессионально, но доступно. Не выдумывай жанр или исполнителя — "
-        "опирайся только на параметры."
-    )
-
-
 def generate_review(features: dict[str, Any]) -> dict[str, Any]:
     """
     Генерирует музыкальный обзор.
 
-    Использует OpenAI API при наличии ключа, иначе — шаблонный fallback.
+    Использует LLM провайдера из конфигурации (OpenAI, Claude, Ollama, Nemotron)
+    с fallback на шаблонный обзор при ошибке.
+
+    Args:
+        features: Словарь со всеми параметрами аудиоанализа
+
+    Returns:
+        Словарь с обзором (source, language, score, sections, full_text, model)
     """
-    if not OPENAI_API_KEY:
-        logger.info("OPENAI_API_KEY не задан — используется шаблонный обзор")
-        return _build_template_review(features)
-
     try:
-        from openai import OpenAI
+        provider = LLMProviderFactory.get_provider()
+        logger.info("Используется LLM провайдер: %s", provider.__class__.__name__)
+        review = provider.generate_review(features)
+        return review
 
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Ты музыкальный критик. Отвечай только валидным JSON "
-                        "на русском языке."
-                    ),
-                },
-                {"role": "user", "content": _build_openai_prompt(features)},
-            ],
-            temperature=0.7,
-            response_format={"type": "json_object"},
-        )
-        content = response.choices[0].message.content
-        if not content:
-            raise ValueError("Пустой ответ от OpenAI")
-
-        parsed = json.loads(content)
-        parsed["source"] = "openai"
-        parsed["language"] = "ru"
-        parsed["model"] = OPENAI_MODEL
-
-        if "full_text" not in parsed and "sections" in parsed:
-            parsed["full_text"] = "\n\n".join(parsed["sections"].values())
-
-        return parsed
-
+    except ValueError as exc:
+        logger.warning("LLM провайдер недоступен (%s) — используется шаблонный обзор", exc)
+        return _build_template_review(features)
     except Exception as exc:
-        logger.warning("OpenAI недоступен (%s) — fallback на шаблон", exc)
+        logger.warning("Ошибка LLM (%s) — fallback на шаблон", exc)
         result = _build_template_review(features)
-        result["openai_error"] = str(exc)
+        result["llm_error"] = str(exc)
         return result
+

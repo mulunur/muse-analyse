@@ -9,9 +9,12 @@
 - Загрузка аудио через веб-интерфейс (drag & drop)
 - Поддержка форматов: **MP3, WAV, FLAC, OGG, M4A**
 - Извлечение признаков Essentia: темп, тональность, громкость, спектр, ритм, танцевальность, энергия
-- Генерация музыкального обзора на **русском языке**:
-  - через **OpenAI API** (если задан `OPENAI_API_KEY`)
-  - или **шаблонный fallback** без внешних API
+- Генерация музыкального обзора на **русском языке** с поддержкой **нескольких LLM провайдеров**:
+  - **OpenAI** — GPT-4o-mini и другие модели (платно)
+  - **Anthropic Claude** — Claude 3.5 Sonnet (платно)
+  - **Ollama** — локальный запуск, бесплатно (приватность)
+  - **NVIDIA Nemotron** — мощная API (платно или free tier)
+  - **Шаблонный fallback** — без API ключей, всегда работает
 - Возврат сырых параметров (JSON) и текста обзора
 
 ---
@@ -21,30 +24,31 @@
 ```
 muse analyse/
 ├── app/
-│   ├── __init__.py          # Версия пакета
-│   ├── config.py            # Конфигурация из .env
-│   ├── audio_analysis.py    # Essentia: извлечение признаков
-│   ├── review_generator.py  # OpenAI / шаблонный обзор
-│   └── main.py              # FastAPI-приложение
+│   ├── __init__.py              # Версия пакета
+│   ├── config.py                # Конфигурация из .env
+│   ├── audio_analysis.py        # Essentia: извлечение признаков
+│   ├── llm_providers.py         # Поддержка OpenAI, Claude, Ollama, Nemotron
+│   ├── review_generator.py      # Генерация обзоров с fallback
+│   └── main.py                  # FastAPI-приложение
 ├── static/
-│   ├── index.html           # Веб-интерфейс
+│   ├── index.html               # Веб-интерфейс
 │   ├── style.css
 │   └── app.js
-├── uploads/                 # Временные файлы (gitignored)
-├── run.py                   # Запуск сервера
+├── uploads/                     # Временные файлы (gitignored)
+├── examples_test_providers.py   # Примеры использования API
+├── run.py                       # Запуск сервера
 ├── requirements.txt
 ├── .env.example
+├── LLM_PROVIDERS.md             # Документация по провайдерам
 ├── .gitignore
 └── README.md
 ```
 
 ---
 
-## Установка
+## Быстрый старт
 
 ### 1. Системные зависимости (macOS)
-
-Essentia требует **ffmpeg** для декодирования MP3, M4A и других сжатых форматов:
 
 ```bash
 brew install ffmpeg
@@ -61,17 +65,7 @@ pip install -r requirements.txt
 
 ### 3. Установка Essentia на macOS
 
-Essentia — самая сложная часть установки. Есть несколько вариантов:
-
-#### Вариант A: pip (рекомендуется попробовать первым)
-
-```bash
-pip install essentia
-```
-
-На Apple Silicon (M1/M2/M3) и Intel pip-колеса доступны не для всех версий Python. Если установка не удалась — переходите к варианту B.
-
-#### Вариант B: Conda (наиболее надёжный на macOS)
+#### Рекомендуется: Conda
 
 ```bash
 conda create -n muse-analyse python=3.10
@@ -80,41 +74,46 @@ conda install -c conda-forge essentia
 pip install -r requirements.txt
 ```
 
-#### Вариант C: Сборка из исходников
+#### Или: pip (если работает для вашей версии Python)
 
-См. [официальную документацию Essentia](https://essentia.upf.edu/installing.html). На macOS потребуются Xcode CLI tools, cmake, ffmpeg и зависимости MTG.
+```bash
+pip install essentia
+```
 
-#### Проверка установки
-
+**Проверка:**
 ```bash
 python -c "import essentia; print(essentia.__version__)"
 ```
 
-### 4. Настройка окружения
+### 4. Настройка
 
 ```bash
 cp .env.example .env
-# Отредактируйте .env — добавьте OPENAI_API_KEY (опционально)
+# Отредактируйте .env — выберите провайдер и добавьте ключи (опционально)
 ```
 
----
-
-## Запуск
+### 5. Запуск
 
 ```bash
-source .venv/bin/activate
 python run.py
 ```
 
-Откройте в браузере: **http://localhost:8000**
+Открыть: **http://localhost:8000**
 
-API-документация: **http://localhost:8000/docs**
+---
 
-### Альтернативный запуск
+## LLM Провайдеры
 
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
+По умолчанию используется **OpenAI**, но вы можете выбрать любого из четырёх:
+
+| Провайдер | Конфиг | Стоимость | Лучше для |
+|-----------|--------|----------|----------|
+| **OpenAI** | `LLM_PROVIDER=openai` | Платно | Быстрый старт, высокое качество |
+| **Claude** | `LLM_PROVIDER=claude` | Платно | Глубокий анализ, структурированность |
+| **Ollama** | `LLM_PROVIDER=ollama` | Бесплатно | Приватность, локальный запуск |
+| **Nemotron** | `LLM_PROVIDER=nemotron` | Платно / Free tier | GPU оптимизация |
+
+**Подробная настройка:** см. [LLM_PROVIDERS.md](LLM_PROVIDERS.md)
 
 ---
 
@@ -122,11 +121,46 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ### `GET /api/health`
 
-Проверка состояния сервиса и доступности Essentia.
+Проверка состояния, доступности Essentia и LLM провайдеров.
+
+```json
+{
+  "status": "ok",
+  "version": "1.0.0",
+  "essentia_available": true,
+  "llm_providers": {
+    "openai": true,
+    "claude": false,
+    "ollama": true,
+    "nemotron": false
+  }
+}
+```
+
+### `GET /api/providers`
+
+Список доступных LLM провайдеров.
+
+```json
+{
+  "available": {
+    "openai": true,
+    "claude": false,
+    "ollama": true,
+    "nemotron": false
+  },
+  "description": { ... }
+}
+```
 
 ### `POST /api/analyze`
 
-Загрузка аудиофайла (`multipart/form-data`, поле `file`).
+Загрузка аудиофайла и получение анализа + обзора.
+
+**Запрос:**
+```bash
+curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze
+```
 
 **Ответ:**
 
@@ -136,10 +170,17 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
   "filename": "track.mp3",
   "features": { ... },
   "review": {
-    "source": "template",
+    "source": "openai",
+    "model": "gpt-4o-mini",
     "language": "ru",
-    "score": 7.2,
-    "sections": { ... },
+    "score": 7.5,
+    "sections": {
+      "summary": "...",
+      "rhythm": "...",
+      "tonality": "...",
+      "production": "...",
+      "verdict": "..."
+    },
     "full_text": "..."
   }
 }
@@ -147,7 +188,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-## Извлекаемые признаки
+## Примеры использования
 
 | Категория | Признаки |
 |-----------|----------|

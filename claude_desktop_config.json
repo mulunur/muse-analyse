@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "muse-analyse": {
+      "command": "python",
+      "args": [
+        "/path/to/muse-analyse/mcp_server.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}

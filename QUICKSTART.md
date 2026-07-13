@@ -5,7 +5,7 @@
 ### 1. Клонируем / открываем проект
 
 ```bash
-cd /Users/mulunur/Documents/develop/muse\ analyse
+cd /Users/mulunur/Documents/develop/muse-analyse
 ```
 
 ### 2. Виртуальное окружение

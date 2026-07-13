@@ -1,0 +1,178 @@
+const dropZone = document.getElementById("dropZone");
+const fileInput = document.getElementById("fileInput");
+const selectBtn = document.getElementById("selectBtn");
+const statusEl = document.getElementById("status");
+const resultsEl = document.getElementById("results");
+
+const FEATURE_LABELS = {
+  bpm: "Темп (BPM)",
+  key: "Тональность",
+  scale: "Лад",
+  energy: "Энергия",
+  danceability: "Танцевальность",
+  loudness_ebu128_lufs: "Громкость (LUFS)",
+  dynamic_complexity: "Динамика",
+  spectral_brightness: "Яркость",
+  spectral_centroid_hz: "Спектр. центр (Гц)",
+  duration_sec: "Длительность (с)",
+  beat_confidence: "Уверенность ритма",
+  key_strength: "Сила тональности",
+};
+
+function showStatus(message, type = "loading") {
+  statusEl.className = `status ${type}`;
+  statusEl.innerHTML = type === "loading"
+    ? `<span class="spinner"></span>${message}`
+    : message;
+  statusEl.classList.remove("hidden");
+}
+
+function hideStatus() {
+  statusEl.classList.add("hidden");
+}
+
+function formatValue(key, value) {
+  if (value === null || value === undefined) return "—";
+  if (key === "key" && typeof value === "string") return value;
+  if (key === "scale") return value === "major" ? "мажор" : value === "minor" ? "минор" : value;
+  if (typeof value === "number") {
+    if (key.includes("confidence") || key.includes("strength") || key === "energy" || key === "danceability" || key === "spectral_brightness") {
+      return (value * (value <= 1 ? 100 : 1)).toFixed(value <= 1 ? 0 : 1) + (value <= 1 ? "%" : "");
+    }
+    return Number.isInteger(value) ? value : value.toFixed(2);
+  }
+  return String(value);
+}
+
+function renderFeatures(features) {
+  const grid = document.getElementById("featuresGrid");
+  grid.innerHTML = "";
+
+  const cards = [
+    { label: FEATURE_LABELS.bpm, value: features.rhythm?.bpm },
+    { label: FEATURE_LABELS.key, value: `${features.tonal?.key || "?"} ${features.tonal?.scale || ""}` },
+    { label: FEATURE_LABELS.energy, value: features.energy },
+    { label: FEATURE_LABELS.danceability, value: features.tonal?.danceability },
+    { label: FEATURE_LABELS.loudness_ebu128_lufs, value: features.dynamics?.loudness_ebu128_lufs },
+    { label: FEATURE_LABELS.dynamic_complexity, value: features.dynamics?.dynamic_complexity },
+    { label: FEATURE_LABELS.spectral_brightness, value: features.spectral?.spectral_brightness },
+    { label: FEATURE_LABELS.spectral_centroid_hz, value: features.spectral?.spectral_centroid_hz },
+    { label: FEATURE_LABELS.duration_sec, value: features.duration_sec },
+    { label: FEATURE_LABELS.beat_confidence, value: features.rhythm?.beat_confidence },
+    { label: FEATURE_LABELS.key_strength, value: features.tonal?.key_strength },
+  ];
+
+  cards.forEach(({ label, value }) => {
+    const card = document.createElement("div");
+    card.className = "feature-card";
+    const key = Object.entries(FEATURE_LABELS).find(([, v]) => v === label)?.[0] || "";
+    card.innerHTML = `
+      <div class="label">${label}</div>
+      <div class="value">${formatValue(key, value)}</div>
+    `;
+    grid.appendChild(card);
+  });
+
+  document.getElementById("rawJson").textContent = JSON.stringify(features, null, 2);
+}
+
+function renderReview(review) {
+  document.getElementById("scoreValue").textContent = review.score ?? "—";
+
+  const sourceMap = {
+    openai: `AI-обзор (${review.model || "OpenAI"})`,
+    template: "Шаблонный обзор (без API)",
+  };
+  document.getElementById("reviewSource").textContent = sourceMap[review.source] || review.source;
+
+  const text = review.full_text
+    || (review.sections ? Object.values(review.sections).join("\n\n") : "Обзор недоступен");
+  document.getElementById("reviewText").textContent = text;
+}
+
+async function analyzeFile(file) {
+  if (!file) return;
+
+  resultsEl.classList.add("hidden");
+  showStatus(`Анализ «${file.name}»… Это может занять до минуты.`);
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      const detail = typeof data.detail === "object"
+        ? JSON.stringify(data.detail, null, 2)
+        : (data.detail || "Ошибка анализа");
+      throw new Error(detail);
+    }
+
+    hideStatus();
+    renderFeatures(data.features);
+    renderReview(data.review);
+    resultsEl.classList.remove("hidden");
+  } catch (err) {
+    showStatus(`Ошибка: ${err.message}`, "error");
+  }
+}
+
+// Drag & drop
+dropZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropZone.classList.add("dragover");
+});
+
+dropZone.addEventListener("dragleave", () => {
+  dropZone.classList.remove("dragover");
+});
+
+dropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropZone.classList.remove("dragover");
+  const file = e.dataTransfer.files[0];
+  analyzeFile(file);
+});
+
+dropZone.addEventListener("click", (e) => {
+  if (e.target !== selectBtn) fileInput.click();
+});
+
+selectBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  fileInput.click();
+});
+
+fileInput.addEventListener("change", () => {
+  analyzeFile(fileInput.files[0]);
+  fileInput.value = "";
+});
+
+// Tabs
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById(`tab${tab.dataset.tab.charAt(0).toUpperCase() + tab.dataset.tab.slice(1)}`).classList.add("active");
+  });
+});
+
+// Health check on load
+fetch("/api/health")
+  .then((r) => r.json())
+  .then((data) => {
+    if (!data.essentia_available) {
+      showStatus(
+        "⚠ Essentia не установлена. Анализ недоступен — см. README для установки.",
+        "error"
+      );
+    }
+  })
+  .catch(() => {});

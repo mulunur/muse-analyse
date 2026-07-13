@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Muse Analyse — Музыкальный анализ</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Muse Analyse</h1>
+      <p class="subtitle">Анализ музыки с Essentia и AI-критика</p>
+    </header>
+
+    <main>
+      <section class="upload-section" id="dropZone">
+        <div class="upload-icon">♪</div>
+        <p>Перетащите аудиофайл сюда или нажмите для выбора</p>
+        <p class="formats">MP3 · WAV · FLAC · OGG · M4A</p>
+        <input type="file" id="fileInput" accept=".mp3,.wav,.flac,.ogg,.m4a,.aac" hidden>
+        <button type="button" id="selectBtn" class="btn btn-primary">Выбрать файл</button>
+      </section>
+
+      <div id="status" class="status hidden"></div>
+
+      <section id="results" class="results hidden">
+        <div class="score-card">
+          <div class="score-value" id="scoreValue">—</div>
+          <div class="score-label">Оценка критика</div>
+          <div class="review-source" id="reviewSource"></div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="review">Обзор</button>
+          <button class="tab" data-tab="features">Параметры</button>
+        </div>
+
+        <div id="tabReview" class="tab-content active">
+          <article id="reviewText" class="review-text"></article>
+        </div>
+
+        <div id="tabFeatures" class="tab-content">
+          <div class="features-grid" id="featuresGrid"></div>
+          <details class="raw-json">
+            <summary>Полный JSON</summary>
+            <pre id="rawJson"></pre>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Powered by <a href="https://essentia.upf.edu/" target="_blank" rel="noopener">Essentia</a>
+        · OpenAI (опционально)</p>
+    </footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

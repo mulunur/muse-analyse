@@ -68,17 +68,20 @@ def _tempo_label(bpm: float) -> str:
     return "быстрый, напряжённый темп"
 
 
-def _dynamics_label(complexity: float, loudness: float) -> str:
-    if complexity >= 0.5:
+def _dynamics_label(complexity: float | None, loudness: float | None) -> str:
+    complexity_value = complexity if complexity is not None else 0.3
+    loudness_value = loudness if loudness is not None else -14
+
+    if complexity_value >= 0.5:
         dyn = "широкий динамический диапазон с выраженными контрастами"
-    elif complexity >= 0.25:
+    elif complexity_value >= 0.25:
         dyn = "умеренная динамическая вариативность"
     else:
         dyn = "сжатая, ровная динамика"
 
-    if loudness >= -8:
+    if loudness_value >= -8:
         loud = "громкая, плотная подача"
-    elif loudness >= -14:
+    elif loudness_value >= -14:
         loud = "средняя громкость, коммерчески сбалансированная"
     else:
         loud = "тихая, интимная подача"
@@ -149,10 +152,10 @@ def _build_template_review(features: dict[str, Any]) -> dict[str, Any]:
         min(
             10,
             5
-            + (energy * 1.5)
-            + (key_strength * 1.5)
+            + ((energy or 0.5) * 1.5)
+            + ((key_strength or 0.0) * 1.5)
             + ((danceability or 0.5) * 1.0)
-            + (min(dyn_complexity, 0.6) * 1.5),
+            + (min(dyn_complexity or 0.3, 0.6) * 1.5),
         ),
         1,
     )

@@ -5,82 +5,43 @@ import json
 from pathlib import Path
 
 import httpx
-from mcp.server import Server
-from mcp.types import Tool
+from mcp.server.fastmcp import FastMCP
 
 # Сервер Muse Analyse по умолчанию
 MUSE_API = "http://localhost:8000"
 
-server = Server("muse-analyse")
+mcp = FastMCP("muse-analyse")
 
 
-@server.list_tools()
-async def list_tools() -> list[Tool]:
-    """Список доступных инструментов."""
-    return [
-        Tool(
-            name="check_providers",
-            description="Проверить доступные LLM провайдеры",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="analyze_audio",
-            description="Анализ аудиофайла: параметры Essentia + AI-обзор",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "Путь к файлу (MP3/WAV/FLAC/OGG/M4A)",
-                    },
-                },
-                "required": ["file_path"],
-            },
-        ),
-        Tool(
-            name="get_status",
-            description="Статус системы: Essentia, провайдеры",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-    ]
+@mcp.tool()
+def check_providers() -> str:
+    """Проверить доступные LLM провайдеры."""
+    with httpx.Client(timeout=10) as client:
+        r = client.get(f"{MUSE_API}/api/providers")
+        return json.dumps(r.json(), ensure_ascii=False)
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> str:
-    """Выполнить инструмент."""
-    async with httpx.AsyncClient() as client:
-        try:
-            if name == "check_providers":
-                r = await client.get(f"{MUSE_API}/api/providers", timeout=10)
-                return json.dumps(r.json(), ensure_ascii=False)
+@mcp.tool()
+def analyze_audio(file_path: str) -> str:
+    """Анализ аудиофайла: параметры Essentia + AI-обзор."""
+    path = Path(file_path)
+    if not path.exists():
+        return json.dumps({"error": f"Файл не найден: {path}"})
 
-            elif name == "analyze_audio":
-                path = arguments.get("file_path")
-                if not Path(path).exists():
-                    return json.dumps({"error": f"Файл не найден: {path}"})
+    with path.open("rb") as f:
+        files = {"file": (path.name, f)}
+        with httpx.Client(timeout=300) as client:
+            r = client.post(f"{MUSE_API}/api/analyze", files=files)
+            return json.dumps(r.json(), ensure_ascii=False)
 
-                with open(path, "rb") as f:
-                    files = {"file": (Path(path).name, f)}
-                    r = await client.post(
-                        f"{MUSE_API}/api/analyze",
-                        files=files,
-                        timeout=300,
-                    )
-                return json.dumps(r.json(), ensure_ascii=False)
 
-            elif name == "get_status":
-                r = await client.get(f"{MUSE_API}/api/health", timeout=10)
-                return json.dumps(r.json(), ensure_ascii=False)
-
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+@mcp.tool()
+def get_status() -> str:
+    """Статус системы: Essentia, провайдеры."""
+    with httpx.Client(timeout=10) as client:
+        r = client.get(f"{MUSE_API}/api/health")
+        return json.dumps(r.json(), ensure_ascii=False)
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    async def main():
-        async with server:
-            await server.wait_for_shutdown()
-
-    asyncio.run(main())
+    mcp.run(transport="stdio")

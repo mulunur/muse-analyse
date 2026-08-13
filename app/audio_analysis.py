@@ -24,6 +24,47 @@ class AudioAnalysisError(Exception):
     """Ошибка при анализе аудиофайла."""
 
 
+def _coerce_to_float(value: Any, default: float | None = None) -> float | None:
+    """Преобразовать значение Essentia к float, поддерживая массивы и кортежи."""
+    if value is None:
+        return default
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    if isinstance(value, tuple):
+        if not value:
+            return default
+        # В некоторых версиях Essentia возвращает (value, extra_info) или подобное.
+        for item in value:
+            coerced = _coerce_to_float(item, default=None)
+            if coerced is not None:
+                return coerced
+        return default
+
+    if hasattr(value, "tolist"):
+        try:
+            value = value.tolist()
+        except Exception:
+            return default
+
+    if isinstance(value, list):
+        if not value:
+            return default
+        if all(isinstance(item, (int, float)) for item in value):
+            return round(sum(float(item) for item in value) / len(value), 4)
+        for item in value:
+            coerced = _coerce_to_float(item, default=None)
+            if coerced is not None:
+                return coerced
+        return default
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _check_essentia() -> None:
     if not ESSENTIA_AVAILABLE:
         raise AudioAnalysisError(
@@ -66,7 +107,14 @@ def _frame_features(audio: Any, sample_rate: int) -> dict[str, float]:
         zcrs.append(float(zcr_algo(frame)))
 
         if prev_spectrum is not None:
-            fluxes.append(float(flux_algo(spectrum, prev_spectrum)))
+            try:
+                flux_value = flux_algo(spectrum, prev_spectrum)
+            except Exception:
+                try:
+                    flux_value = flux_algo(spectrum)
+                except Exception:
+                    flux_value = 0.0
+            fluxes.append(float(_coerce_to_float(flux_value, default=0.0)))
         prev_spectrum = spectrum
 
         _, mfcc_coeffs = mfcc_algo(spectrum)
@@ -98,12 +146,12 @@ def _frame_features(audio: Any, sample_rate: int) -> dict[str, float]:
 def _tonal_features(audio: Any) -> dict[str, Any]:
     """Тональность, гармония и танцевальность."""
     key, scale, key_strength = es.KeyExtractor()(audio)
-    tuning_freq = float(es.TuningFrequencyExtractor()(audio))
+    tuning_freq = _coerce_to_float(es.TuningFrequencyExtractor()(audio))
 
     try:
         danceability, dfa = es.Danceability()(audio)
-        danceability = round(float(danceability), 4)
-        dfa_value = round(float(dfa), 4)
+        danceability = round(_coerce_to_float(danceability, default=None), 4) if _coerce_to_float(danceability, default=None) is not None else None
+        dfa_value = round(_coerce_to_float(dfa, default=None), 4) if _coerce_to_float(dfa, default=None) is not None else None
     except Exception:
         danceability = None
         dfa_value = None
@@ -120,8 +168,8 @@ def _tonal_features(audio: Any) -> dict[str, Any]:
     return {
         "key": key,
         "scale": scale,
-        "key_strength": round(float(key_strength), 4),
-        "tuning_frequency_hz": round(tuning_freq, 2),
+        "key_strength": round(_coerce_to_float(key_strength, default=0.0), 4),
+        "tuning_frequency_hz": round(tuning_freq, 2) if tuning_freq is not None else None,
         "danceability": danceability,
         "danceability_dfa": dfa_value,
         "top_chords": [{"chord": c, "count": n} for c, n in top_chords],
@@ -133,19 +181,25 @@ def _rhythm_features(audio: Any) -> dict[str, Any]:
     rhythm = es.RhythmExtractor2013(method="multifeature")
     bpm, beats, confidence, _, beat_intervals = rhythm(audio)
 
-    onset_rate = float(es.OnsetRate()(audio))
-    beat_loudness = es.BeatLoudness()(audio)
-    beat_loudness_band_ratio = es.BeatLoudnessBandRatio()(audio)
+    onset_rate = _coerce_to_float(es.OnsetRate()(audio), default=None)
+    try:
+        beat_loudness = _coerce_to_float(es.BeatLoudness()(audio), default=None)
+    except Exception:
+        beat_loudness = None
+    try:
+        beat_loudness_band_ratio = _coerce_to_float(es.BeatLoudnessBandRatio()(audio), default=None)
+    except Exception:
+        beat_loudness_band_ratio = None
 
     return {
-        "bpm": round(float(bpm), 2),
-        "beat_confidence": round(float(confidence), 4),
+        "bpm": round(_coerce_to_float(bpm, default=0.0), 2),
+        "beat_confidence": round(_coerce_to_float(confidence, default=0.0), 4),
         "beats_count": len(beats),
-        "onset_rate": round(onset_rate, 4),
-        "beat_loudness": round(float(beat_loudness), 4),
-        "beat_loudness_band_ratio": round(float(beat_loudness_band_ratio), 4),
+        "onset_rate": round(onset_rate, 4) if onset_rate is not None else None,
+        "beat_loudness": round(beat_loudness, 4) if beat_loudness is not None else None,
+        "beat_loudness_band_ratio": round(beat_loudness_band_ratio, 4) if beat_loudness_band_ratio is not None else None,
         "avg_beat_interval_sec": round(
-            sum(float(i) for i in beat_intervals) / len(beat_intervals), 4
+            sum(_coerce_to_float(i, default=0.0) for i in beat_intervals) / len(beat_intervals), 4
         )
         if len(beat_intervals) > 0
         else None,
@@ -156,34 +210,34 @@ def _dynamics_features(audio: Any) -> dict[str, Any]:
     """Громкость и динамика."""
     try:
         _, _, loudness_ebu, _ = es.LoudnessEBUR128()(audio)
-        loudness_ebu = float(loudness_ebu)
+        loudness_ebu = _coerce_to_float(loudness_ebu, default=None)
     except Exception:
-        loudness_ebu = float(es.Loudness()(audio))
+        loudness_ebu = None
 
-    loudness = float(es.Loudness()(audio))
-    dynamic_complexity = float(es.DynamicComplexity()(audio))
+    loudness = _coerce_to_float(es.Loudness()(audio), default=None)
+    dynamic_complexity = _coerce_to_float(es.DynamicComplexity()(audio), default=None)
 
     try:
-        replay_gain = float(es.ReplayGain()(audio))
+        replay_gain = _coerce_to_float(es.ReplayGain()(audio), default=None)
     except Exception:
         replay_gain = None
 
-    rms = float(es.RMS()(audio))
+    rms = _coerce_to_float(es.RMS()(audio), default=None)
 
     return {
-        "loudness_ebu128_lufs": round(loudness_ebu, 2),
-        "loudness_db": round(loudness, 2),
-        "dynamic_complexity": round(dynamic_complexity, 4),
+        "loudness_ebu128_lufs": round(loudness_ebu, 2) if loudness_ebu is not None else None,
+        "loudness_db": round(loudness, 2) if loudness is not None else None,
+        "dynamic_complexity": round(dynamic_complexity, 4) if dynamic_complexity is not None else None,
         "replay_gain_db": round(replay_gain, 2) if replay_gain is not None else None,
-        "rms": round(rms, 4),
+        "rms": round(rms, 4) if rms is not None else None,
     }
 
 
 def _energy_proxy(features: dict[str, Any]) -> float:
     """Оценка энергичности на основе доступных признаков (0–1)."""
-    rms = features.get("dynamics", {}).get("rms", 0.0)
-    bpm = features.get("rhythm", {}).get("bpm", 120.0)
-    brightness = features.get("spectral", {}).get("spectral_brightness", 0.5)
+    rms = features.get("dynamics", {}).get("rms") or 0.0
+    bpm = features.get("rhythm", {}).get("bpm") or 120.0
+    brightness = features.get("spectral", {}).get("spectral_brightness") or 0.5
     danceability = features.get("tonal", {}).get("danceability") or 0.5
 
     # Нормализация BPM: 60–180 → 0–1

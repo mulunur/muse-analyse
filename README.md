@@ -95,7 +95,15 @@ cp .env.example .env
 ### 5. Запуск
 
 ```bash
+# Запуск (быстрое, рекомендованное)
 python run.py
+
+# Или запускайте напрямую uvicorn (без авто‑перезагрузки в продакшн):
+/path/to/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
+
+# Если вы используете виртуальное окружение в проекте:
+source .venv/bin/activate
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
 ```
 
 Открыть: **http://localhost:8000**
@@ -160,6 +168,26 @@ python run.py
 **Запрос:**
 ```bash
 curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze
+```
+
+### Запуск MCP-инструмента (локально, пример)
+
+Если вы хотите вызвать внутреннюю обёртку `mcp_server.py` (не требует запуска FastMCP транспорта):
+
+```bash
+# В одном терминале запустите API (см. выше):
+source .venv311/bin/activate
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# В другом терминале выполните анализ файла через инструмент:
+/path/to/project/.venv311/bin/python -c "from mcp_server import analyze_audio; print(analyze_audio('/absolute/path/to/track.mp3'))"
+```
+
+Если хотите запустить interactive FastMCP transport (stdin/stdout) для интеграции с внешними менеджерами MCP, используйте:
+
+```bash
+# Запуск FastMCP (пример):
+/path/to/project/.venv311/bin/python mcp_server.py
 ```
 
 **Ответ:**

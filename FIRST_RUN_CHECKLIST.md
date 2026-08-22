@@ -9,13 +9,13 @@
 ## 1. Окружение
 
 ```bash
-cd /Users/mulunur/Documents/develop/muse\ analyse
+cd /path/to/muse-analyse
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-- [ ] Виртуальное окружение создано
-- [ ] `.venv` папка видна в проекте
+- [ ] Виртуальное окружение создано (например, в `.venv`)
+- [ ] Активировано выбранное виртуальное окружение
 
 ## 2. Зависимости
 

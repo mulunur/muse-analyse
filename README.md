@@ -64,7 +64,7 @@ brew install ffmpeg
 ### 2. Python-окружение
 
 ```bash
-cd "/Users/mulunur/Documents/develop/muse analyse"
+cd /path/to/muse-analyse
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -208,18 +208,18 @@ curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze
 
 ```bash
 # В одном терминале запустите API (см. выше):
-source .venv311/bin/activate
+source .venv/bin/activate
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # В другом терминале выполните анализ файла через инструмент:
-/path/to/project/.venv311/bin/python -c "from mcp_server import analyze_audio; print(analyze_audio('/absolute/path/to/track.mp3'))"
+python -c "from mcp_server import analyze_audio; print(analyze_audio('/absolute/path/to/track.mp3'))"
 ```
 
 Если хотите запустить interactive FastMCP transport (stdin/stdout) для интеграции с внешними менеджерами MCP, используйте:
 
 ```bash
 # Запуск FastMCP (пример):
-/path/to/project/.venv311/bin/python mcp_server.py
+python mcp_server.py
 ```
 
 **Ответ:**

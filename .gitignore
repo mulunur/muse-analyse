@@ -41,5 +41,8 @@ uploads/
 tmp/
 *.tmp
 
+# RAG index (пересоздаётся скриптом index_knowledge.py)
+data/rag_index/
+
 # Logs
 *.log

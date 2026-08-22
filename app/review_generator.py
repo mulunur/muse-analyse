@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from app.llm_providers import LLMProviderFactory
+from app.rag.knowledge import retrieve_rag_context
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,17 @@ def generate_review(features: dict[str, Any]) -> dict[str, Any]:
     try:
         provider = LLMProviderFactory.get_provider()
         logger.info("Используется LLM провайдер: %s", provider.__class__.__name__)
-        review = provider.generate_review(features)
+
+        rag_context, rag_passages = retrieve_rag_context(features)
+        review = provider.generate_review(features, rag_context=rag_context)
+
+        if rag_passages:
+            review["rag"] = {
+                "enabled": True,
+                "passages_used": len(rag_passages),
+                "sources": list({p.get("source") for p in rag_passages if p.get("source")}),
+            }
+
         return review
 
     except ValueError as exc:

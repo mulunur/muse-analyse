@@ -20,6 +20,7 @@ from app.audio_analysis import (
 )
 from app.config import MAX_UPLOAD_SIZE_BYTES, SUPPORTED_EXTENSIONS, STATIC_DIR, UPLOAD_DIR
 from app.llm_providers import LLMProviderFactory
+from app.rag.knowledge import get_knowledge_base
 from app.review_generator import generate_review
 
 logging.basicConfig(level=logging.INFO)
@@ -46,12 +47,14 @@ async def index():
 @app.get("/api/health")
 async def health():
     llm_providers = LLMProviderFactory.list_available_providers()
+    rag_status = get_knowledge_base().get_status()
     return {
         "status": "ok",
         "version": __version__,
         "essentia_available": ESSENTIA_AVAILABLE,
         "essentia_error": ESSENTIA_ERROR,
         "llm_providers": llm_providers,
+        "rag": rag_status,
     }
 
 
@@ -68,6 +71,21 @@ async def list_providers():
             "nemotron": "NVIDIA Nemotron API (требует NEMOTRON_API_KEY)",
         }
     }
+
+
+@app.get("/api/rag/status")
+async def rag_status():
+    """Статус RAG: индекс, источники, количество чанков."""
+    return get_knowledge_base().get_status()
+
+
+@app.post("/api/rag/reindex")
+async def rag_reindex(force: bool = True):
+    """Переиндексация PDF из data/knowledge/."""
+    result = get_knowledge_base().build_index(force=force)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result)
+    return result
 
 
 @app.post("/api/analyze")

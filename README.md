@@ -15,6 +15,7 @@
   - **Ollama** — локальный запуск, бесплатно (приватность)
   - **NVIDIA Nemotron** — мощная API (платно или free tier)
   - **Шаблонный fallback** — без API ключей, всегда работает
+- **RAG (Retrieval Augmented Generation)** — обзоры дополняются фрагментами из учебника «Теория современной композиции» для теоретически обоснованных оценок
 - Возврат сырых параметров (JSON) и текста обзора
 
 ---
@@ -29,7 +30,13 @@ muse analyse/
 │   ├── audio_analysis.py        # Essentia: извлечение признаков
 │   ├── llm_providers.py         # Поддержка OpenAI, Claude, Ollama, Nemotron
 │   ├── review_generator.py      # Генерация обзоров с fallback
+│   ├── rag/                     # RAG: индексация PDF, семантический поиск
 │   └── main.py                  # FastAPI-приложение
+├── data/
+│   ├── knowledge/               # PDF-учебники (версионируются)
+│   └── rag_index/               # ChromaDB-индекс (gitignored, пересоздаётся)
+├── scripts/
+│   └── index_knowledge.py       # CLI для построения RAG-индекса
 ├── static/
 │   ├── index.html               # Веб-интерфейс
 │   ├── style.css
@@ -107,6 +114,31 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
 ```
 
 Открыть: **http://localhost:8000**
+
+### 6. RAG — индексация учебника
+
+В каталоге `data/knowledge/` уже лежит учебник «Теория современной композиции». Для первого запуска постройте векторный индекс:
+
+```bash
+pip install chromadb pymupdf sentence-transformers
+python scripts/index_knowledge.py
+```
+
+Проверка статуса:
+
+```bash
+python scripts/index_knowledge.py --status
+```
+
+При первом запуске скачается мультиязычная модель эмбеддингов (~470 МБ). Индекс сохраняется в `data/rag_index/`.
+
+Чтобы добавить другие учебники — положите PDF в `data/knowledge/` и выполните:
+
+```bash
+python scripts/index_knowledge.py --force
+```
+
+Отключить RAG: `RAG_ENABLED=false` в `.env`.
 
 ---
 

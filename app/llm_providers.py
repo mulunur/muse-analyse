@@ -28,12 +28,18 @@ class LLMProvider(ABC):
     """Абстрактный интерфейс для LLM провайдеров."""
 
     @abstractmethod
-    def generate_review(self, features: dict[str, Any]) -> dict[str, Any]:
+    def generate_review(
+        self,
+        features: dict[str, Any],
+        *,
+        rag_context: str = "",
+    ) -> dict[str, Any]:
         """
         Генерирует музыкальный обзор на основе признаков.
 
         Args:
             features: Словарь со всеми параметрами аудиоанализа
+            rag_context: Справочный контекст из RAG (учебник)
 
         Returns:
             Словарь с полями: source, language, score, sections, full_text, model
@@ -41,7 +47,11 @@ class LLMProvider(ABC):
         pass
 
     @staticmethod
-    def _build_prompt(features: dict[str, Any]) -> str:
+    def _build_prompt(
+        features: dict[str, Any],
+        *,
+        rag_context: str = "",
+    ) -> str:
         """Строит промпт для генерации обзора."""
         compact = {
             "duration_sec": features.get("duration_sec"),
@@ -55,11 +65,23 @@ class LLMProvider(ABC):
             },
             "energy": features.get("energy"),
         }
+
+        rag_section = ""
+        if rag_context:
+            rag_section = (
+                f"\n\n{rag_context}\n\n"
+                "При анализе опирайся на параметры Essentia и, где уместно, "
+                "обосновывай оценки терминами и концепциями из учебника "
+                "(композиция, гармония, ритм, форма, фактура). "
+                "Не цитируй учебник дословно — интерпретируй применительно к треку."
+            )
+
         return (
             "Ты — профессиональный музыкальный критик. На основе объективных параметров "
             "аудиоанализа (библиотека Essentia) напиши структурированный обзор трека на русском языке.\n\n"
             "Параметры анализа (JSON):\n"
-            f"{json.dumps(compact, ensure_ascii=False, indent=2)}\n\n"
+            f"{json.dumps(compact, ensure_ascii=False, indent=2)}"
+            f"{rag_section}\n\n"
             "Формат ответа — JSON с полями:\n"
             '- "score": число 1–10\n'
             '- "sections": объект с ключами summary, rhythm, tonality, production, verdict\n'
@@ -79,7 +101,12 @@ class OpenAIProvider(LLMProvider):
     def is_available(self) -> bool:
         return bool(self.api_key)
 
-    def generate_review(self, features: dict[str, Any]) -> dict[str, Any]:
+    def generate_review(
+        self,
+        features: dict[str, Any],
+        *,
+        rag_context: str = "",
+    ) -> dict[str, Any]:
         """Генерирует обзор через OpenAI API."""
         if not self.is_available():
             raise ValueError("OPENAI_API_KEY не установлен")
@@ -98,7 +125,10 @@ class OpenAIProvider(LLMProvider):
                             "на русском языке."
                         ),
                     },
-                    {"role": "user", "content": self._build_prompt(features)},
+                    {
+                        "role": "user",
+                        "content": self._build_prompt(features, rag_context=rag_context),
+                    },
                 ],
                 temperature=LLM_TEMPERATURE,
                 max_tokens=LLM_MAX_TOKENS,
@@ -135,7 +165,12 @@ class ClaudeProvider(LLMProvider):
     def is_available(self) -> bool:
         return bool(self.api_key)
 
-    def generate_review(self, features: dict[str, Any]) -> dict[str, Any]:
+    def generate_review(
+        self,
+        features: dict[str, Any],
+        *,
+        rag_context: str = "",
+    ) -> dict[str, Any]:
         """Генерирует обзор через Anthropic Claude API."""
         if not self.is_available():
             raise ValueError("ANTHROPIC_API_KEY не установлен")
@@ -152,7 +187,10 @@ class ClaudeProvider(LLMProvider):
                     "на русском языке."
                 ),
                 messages=[
-                    {"role": "user", "content": self._build_prompt(features)},
+                    {
+                        "role": "user",
+                        "content": self._build_prompt(features, rag_context=rag_context),
+                    },
                 ],
             )
 
@@ -193,7 +231,12 @@ class OllamaProvider(LLMProvider):
         except Exception:
             return False
 
-    def generate_review(self, features: dict[str, Any]) -> dict[str, Any]:
+    def generate_review(
+        self,
+        features: dict[str, Any],
+        *,
+        rag_context: str = "",
+    ) -> dict[str, Any]:
         """Генерирует обзор через локальный Ollama."""
         if not self.is_available():
             raise ValueError(
@@ -204,7 +247,7 @@ class OllamaProvider(LLMProvider):
         try:
             import requests
 
-            prompt = self._build_prompt(features)
+            prompt = self._build_prompt(features, rag_context=rag_context)
             payload = {
                 "model": self.model,
                 "prompt": prompt,
@@ -269,7 +312,12 @@ class NemotronProvider(LLMProvider):
     def is_available(self) -> bool:
         return bool(self.api_key)
 
-    def generate_review(self, features: dict[str, Any]) -> dict[str, Any]:
+    def generate_review(
+        self,
+        features: dict[str, Any],
+        *,
+        rag_context: str = "",
+    ) -> dict[str, Any]:
         """Генерирует обзор через NVIDIA Nemotron API."""
         if not self.is_available():
             raise ValueError("NEMOTRON_API_KEY не установлен")
@@ -292,7 +340,10 @@ class NemotronProvider(LLMProvider):
                             "на русском языке."
                         ),
                     },
-                    {"role": "user", "content": self._build_prompt(features)},
+                    {
+                        "role": "user",
+                        "content": self._build_prompt(features, rag_context=rag_context),
+                    },
                 ],
                 "temperature": LLM_TEMPERATURE,
                 "max_tokens": LLM_MAX_TOKENS,

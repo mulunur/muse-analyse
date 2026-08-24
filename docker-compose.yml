@@ -1,0 +1,52 @@
+services:
+  muse-analyse:
+    platform: linux/amd64
+    build:
+      context: .
+      target: runtime
+    image: muse-analyse:local
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      RAG_ENABLED: "false"
+      RAG_INDEX_DIR: /app/data/rag_index
+      KNOWLEDGE_DIR: /app/data/knowledge
+    ports:
+      - "${MUSE_PORT:-8000}:8000"
+    volumes:
+      - rag_index:/app/data/rag_index
+      - ./data/knowledge:/app/data/knowledge:ro
+    tmpfs:
+      - /app/uploads:size=128m
+    restart: unless-stopped
+
+  muse-analyse-rag:
+    profiles: ["rag"]
+    platform: linux/amd64
+    build:
+      context: .
+      target: rag
+    image: muse-analyse:rag
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      RAG_ENABLED: "true"
+      RAG_INDEX_DIR: /app/data/rag_index
+      KNOWLEDGE_DIR: /app/data/knowledge
+    ports:
+      - "${MUSE_PORT:-8000}:8000"
+    volumes:
+      - rag_index:/app/data/rag_index
+      - ./data/knowledge:/app/data/knowledge:ro
+    tmpfs:
+      - /app/uploads:size=128m
+    restart: unless-stopped
+
+volumes:
+  rag_index:

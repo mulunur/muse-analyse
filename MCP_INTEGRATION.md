@@ -127,11 +127,14 @@ if __name__ == "__main__":
 
 ## Интеграция с Claude Desktop
 
-### 1. Установите MCP SDK
+### 1. Подготовьте MCP-клиент
 
 ```bash
+source .venv/bin/activate
 pip install mcp httpx
 ```
+
+Само приложение запускается в Docker-контейнере. MCP-клиент не нужно помещать в контейнер Claude Desktop.
 
 ### 2. Добавьте конфигурацию
 
@@ -160,12 +163,20 @@ pip install mcp httpx
 **На Linux:**
 `~/.config/Claude/claude_desktop_config.json`
 
-### 3. Запустите Muse Analyse сервер
+### 3. Запустите контейнер Muse Analyse
 
 ```bash
 cd /path/to/muse-analyse
-python run.py
+docker compose up -d --build
 ```
+
+Проверьте API:
+
+```bash
+curl http://localhost:8000/api/health
+```
+
+Если Compose установлен в standalone-варианте, используйте `docker-compose` вместо `docker compose`.
 
 ### 4. Перезагрузите Claude Desktop
 
@@ -197,12 +208,14 @@ Claude использует `check_providers` и покажет статус.
 Если вы хотите использовать Muse Analyse через обычный HTTP API без MCP:
 
 ```bash
-# Запустите сервер
-python run.py
+# Запустите контейнер
+docker compose up -d
 
 # Используйте API напрямую через curl или Python requests
 curl http://localhost:8000/api/providers
 ```
+
+На VPS замените `localhost:8000` на домен приложения после настройки reverse proxy и HTTPS. MCP-конфигурация должна указывать на MCP-процесс, запущенный на машине пользователя; он обращается к API по значению `MUSE_API`.
 
 ---
 

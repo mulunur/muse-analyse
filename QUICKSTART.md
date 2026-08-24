@@ -1,4 +1,4 @@
-# Quick Start — Мuse Analyse с поддержкой нескольких LLM
+# Quick Start — Muse Analyse в Docker
 
 ## 5-минутный старт
 
@@ -8,66 +8,40 @@
 cd /path/to/muse-analyse
 ```
 
-### 2. Виртуальное окружение
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 3. Зависимости
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Конфигурация
+### 2. Конфигурация
 
 ```bash
 cp .env.example .env
 ```
 
-**Отредактируйте `.env`:**
+Добавьте в `.env` API-ключ выбранного LLM-провайдера. Без ключа приложение использует шаблонный fallback.
 
-**Вариант A: OpenAI (по умолчанию)**
-```env
+```bash
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-your-key-here
 ```
 
-**Вариант B: Claude**
-```env
-LLM_PROVIDER=claude
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-```
-
-**Вариант C: Ollama локально (бесплатно)**
-```bash
-# Сначала установите Ollama: https://ollama.ai/download
-# Запустите в другом терминале: ollama serve
-# Скачайте модель: ollama pull mistral
-```
-
-Затем в `.env`:
-```env
-LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=mistral
-```
-
-**Вариант D: Nemotron**
-```env
-LLM_PROVIDER=nemotron
-NEMOTRON_API_KEY=nvapi_your_key_here
-```
-
-### 5. Запуск
+### 3. Запуск контейнера
 
 ```bash
-python run.py
+docker compose up --build
 ```
 
-Открыть браузер: **http://localhost:8000**
+Для старой standalone-установки Compose используйте `docker-compose` вместо `docker compose`.
+
+Открыть: **http://localhost:8000**
+
+### 4. Проверка
+
+```bash
+curl http://localhost:8000/api/health
+```
+
+Логи:
+
+```bash
+docker compose logs -f muse-analyse
+```
 
 ---
 
@@ -101,16 +75,25 @@ curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze
 
 ---
 
+## RAG-профиль
+
+Базовый контейнер запускается без тяжёлых RAG-зависимостей. Для RAG:
+
+```bash
+docker compose down
+docker compose --profile rag up --build muse-analyse-rag
+docker compose --profile rag run --rm muse-analyse-rag python scripts/index_knowledge.py
+```
+
+Индекс сохраняется в Docker volume.
+
 ## Разрешение проблем
 
 ### Essentia не установилась
 
 ```bash
-# Попробуйте conda (самый надёжный способ)
-conda create -n muse-analyse python=3.10
-conda activate muse-analyse
-conda install -c conda-forge essentia
-pip install -r requirements.txt
+docker compose logs muse-analyse
+docker compose build --no-cache muse-analyse
 ```
 
 ### API ключ не работает
@@ -124,16 +107,7 @@ curl http://localhost:8000/api/health
 
 ### Ollama недоступна
 
-```bash
-# Убедитесь что запущена
-ollama serve
-
-# Проверьте модель установлена
-ollama list
-
-# Если нет, установите
-ollama pull mistral
-```
+Проверьте, что Ollama доступна из контейнера, и укажите корректный `OLLAMA_BASE_URL`.
 
 ### Медленный анализ
 
@@ -147,7 +121,7 @@ ollama pull mistral
 
 Достаточно:
 1. Отредактировать `.env` (изменить `LLM_PROVIDER`)
-2. Перезагрузить сервер (`Ctrl+C` + `python run.py`)
+2. Пересоздать контейнер: `docker compose up -d --force-recreate`
 
 Никакой переустановки не нужна.
 

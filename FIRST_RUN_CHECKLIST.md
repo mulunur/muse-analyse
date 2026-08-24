@@ -2,50 +2,20 @@
 
 ## Пред-требования ✓
 
-- [ ] Python 3.9+
-- [ ] ffmpeg установлен (`brew install ffmpeg` на macOS)
+- [ ] Docker Desktop (macOS/Windows) или Docker Engine (Linux VPS)
+- [ ] Docker Compose plugin
 - [ ] Git (опционально)
 
 ## 1. Окружение
 
 ```bash
 cd /path/to/muse-analyse
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-- [ ] Виртуальное окружение создано (например, в `.venv`)
-- [ ] Активировано выбранное виртуальное окружение
-
-## 2. Зависимости
-
-```bash
-pip install -r requirements.txt
-```
-
-**⚠️ Самая сложная часть — Essentia:**
-
-**Если pip установился:**
-```bash
-python -c "import essentia; print(essentia.__version__)"
-```
-- [ ] Essentia установилась
-
-**Если pip не сработал — используйте conda:**
-```bash
-conda create -n muse python=3.10
-conda activate muse
-conda install -c conda-forge essentia
-pip install -r requirements.txt
-```
-
-## 3. Конфигурация
-
-```bash
 cp .env.example .env
 ```
 
-- [ ] `.env` файл создан
+- [ ] `.env` создан
+
+## 2. Конфигурация
 
 **Выберите вариант (отредактируйте `.env`):**
 
@@ -98,57 +68,25 @@ NEMOTRON_MODEL=meta/llama-2-70b-chat
 - [ ] API ключ получен (https://developer.nvidia.com/)
 - [ ] Ключ добавлен в `.env`
 
-## 4. Проверка конфигурации
+## 3. Запуск контейнера
 
 ```bash
-python -c "from app.config import LLM_PROVIDER; print(f'Provider: {LLM_PROVIDER}')"
+docker compose up --build -d
 ```
 
-- [ ] Конфиг загружается без ошибок
-- [ ] Выбран правильный провайдер
+- [ ] Образ собран
+- [ ] Контейнер запущен
 
-## 5. Запуск сервера
-
-```bash
-python run.py
-```
-
-Вывод должен быть похож на:
-```
-INFO:     Started server process
-INFO:     Uvicorn running on http://0.0.0.0:8000
-```
-
-- [ ] Сервер запущен
-- [ ] Нет ошибок в выводе
-
-## 6. Проверка здоровья
-
-В другом терминале:
+## 4. Проверка здоровья
 
 ```bash
 curl http://localhost:8000/api/health
 ```
 
-Ожидаемый результат:
-```json
-{
-  "status": "ok",
-  "version": "1.0.0",
-  "essentia_available": true,
-  "llm_providers": {
-    "openai": true,
-    "claude": false,
-    "ollama": true,
-    "nemotron": false
-  }
-}
-```
-
 - [ ] Essentia доступна
-- [ ] Выбранный провайдер отмечен как доступный (true)
+- [ ] Контейнер имеет статус healthy
 
-## 7. Проверка провайдеров
+## 5. Проверка провайдеров
 
 ```bash
 curl http://localhost:8000/api/providers | jq
@@ -156,14 +94,14 @@ curl http://localhost:8000/api/providers | jq
 
 - [ ] Список провайдеров возвращается
 
-## 8. Первый тест в браузере
+## 6. Первый тест в браузере
 
 Откройте: **http://localhost:8000**
 
 - [ ] Веб-интерфейс загружается
 - [ ] Видна зона для загрузки файлов
 
-## 9. Первый анализ
+## 7. Первый анализ
 
 Найдите MP3/WAV файл и либо:
 
@@ -184,7 +122,7 @@ curl -X POST -F "file=@/path/to/track.mp3" http://localhost:8000/api/analyze | j
 - [ ] Ответ получен
 - [ ] В ответе есть `review` с оценкой и текстом
 
-## 10. Проверка результатов
+## 8. Проверка результатов
 
 В ответе должны быть:
 ```json
@@ -219,7 +157,8 @@ curl -X POST -F "file=@/path/to/track.mp3" http://localhost:8000/api/analyze | j
 ## 🐛 Решение проблем
 
 ### Essentia не установилась
-→ Используйте conda (см. выше)
+→ Проверьте архитектуру: production-образ рассчитан на `linux/amd64`.
+→ Посмотрите логи: `docker compose logs muse-analyse`
 
 ### LLM провайдер отмечен как false
 → Проверьте API ключ в `.env`
@@ -233,8 +172,8 @@ curl -X POST -F "file=@/path/to/track.mp3" http://localhost:8000/api/analyze | j
 → 3 мин трека = 45-120 сек анализа
 
 ### API ошибка 503
-→ Essentia не установлена
-→ Запустите: `pip install essentia` или используйте conda
+→ Essentia не загрузилась внутри контейнера
+→ Пересоберите образ: `docker compose build --no-cache muse-analyse`
 
 ## 📚 Дальше
 
@@ -245,7 +184,7 @@ curl -X POST -F "file=@/path/to/track.mp3" http://localhost:8000/api/analyze | j
 ## 🚀 Готовы начать?
 
 ```bash
-python run.py
+docker compose up --build -d
 ```
 
 Откройте браузер на **http://localhost:8000** и загружайте треки! 🎵

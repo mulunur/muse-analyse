@@ -4,8 +4,11 @@
 
 ## Установка
 
+Muse Analyse запускается в Docker-контейнере, а MCP-сервер запускается отдельно у пользователя Claude Desktop.
+
 ```bash
-pip install -r requirements.txt
+cp .env.example .env
+docker compose up --build -d
 ```
 
 ## Конфигурация Claude Desktop
@@ -21,8 +24,12 @@ pip install -r requirements.txt
 {
   "mcpServers": {
     "muse-analyse": {
-      "command": "python",
-      "args": ["/Users/your_username/Documents/develop/muse analyse/mcp_server.py"]
+      "command": "/path/to/muse-analyse/.venv/bin/python",
+      "args": ["/path/to/muse-analyse/mcp_server.py"],
+      "env": {
+        "MUSE_API": "http://localhost:8000",
+        "PYTHONUNBUFFERED": "1"
+      }
     }
   }
 }
@@ -36,9 +43,9 @@ pip install -r requirements.txt
 
 ## Использование
 
-### 1. Запустите Muse Analyse
+### 1. Запустите контейнер Muse Analyse
 ```bash
-python run.py
+docker compose up -d
 ```
 
 ### 2. Перезагрузите Claude Desktop
@@ -77,12 +84,12 @@ Claude автоматически использует инструмент `ana
 
 ## Тестирование
 
-Запустите сервер в одном терминале:
+Запустите API-контейнер:
 ```bash
-python run.py
+docker compose up -d
 ```
 
-В другом:
+MCP-сервер запускается Claude Desktop автоматически. Для ручной проверки:
 ```bash
 python mcp_server.py
 ```

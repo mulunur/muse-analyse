@@ -2,13 +2,14 @@
 """MCP сервер для Muse Analyse."""
 
 import json
+import os
 from pathlib import Path
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 
 # Сервер Muse Analyse по умолчанию
-MUSE_API = "http://localhost:8000"
+MUSE_API = os.getenv("MUSE_API", "http://localhost:8000").rstrip("/")
 
 mcp = FastMCP("muse-analyse")
 

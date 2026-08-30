@@ -1,6 +1,14 @@
-# Quick Start — Muse Analyse в Docker
+# Quick Start Мuse Analyse
 
-## 5-минутный старт
+# tldr:
+```
+cd /path/to/muse-analyse
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level warning --no-access-log
+```
+открыть http://localhost:8000
 
 ### 1. Клонируем / открываем проект
 

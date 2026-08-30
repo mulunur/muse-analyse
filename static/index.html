@@ -3,56 +3,116 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Muse Analyse — Музыкальный анализ</title>
+  <title>Muse Analyse — Growth Copilot</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="container">
-    <header>
-      <h1>Muse Analyse</h1>
-      <p class="subtitle">Анализ музыки с Essentia и AI-критика</p>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Music growth studio</p>
+        <h1>Muse Analyse</h1>
+      </div>
+      <div class="workspace-switcher" aria-label="Workspace selector">
+        <button class="workspace-tab active" data-view="analysis" type="button">Анализ трека</button>
+        <button class="workspace-tab" data-view="growth" type="button">Growth Copilot</button>
+      </div>
     </header>
 
     <main>
-      <section class="upload-section" id="dropZone">
-        <div class="upload-icon">♪</div>
-        <p>Перетащите аудиофайл сюда или нажмите для выбора</p>
-        <p class="formats">MP3 · WAV · FLAC · OGG · M4A</p>
-        <input type="file" id="fileInput" accept=".mp3,.wav,.flac,.ogg,.m4a,.aac" hidden>
-        <button type="button" id="selectBtn" class="btn btn-primary">Выбрать файл</button>
+      <section class="workspace-view active" id="analysis-view">
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Audio intelligence</p>
+              <h2>Анализ композиции</h2>
+            </div>
+          </div>
+
+          <section class="upload-section" id="dropZone">
+            <div class="upload-icon">♪</div>
+            <p>Перетащите аудиофайл сюда или нажмите для выбора</p>
+            <p class="formats">MP3 · WAV · FLAC · OGG · M4A</p>
+            <input type="file" id="fileInput" accept=".mp3,.wav,.flac,.ogg,.m4a,.aac" hidden>
+            <button type="button" id="selectBtn" class="btn btn-primary">Выбрать файл</button>
+          </section>
+
+          <div id="status" class="status hidden"></div>
+
+          <section id="results" class="results hidden">
+            <div class="score-card">
+              <div class="score-value" id="scoreValue">—</div>
+              <div class="score-label">Оценка критика</div>
+              <div class="review-source" id="reviewSource"></div>
+            </div>
+
+            <div class="tabs">
+              <button class="tab active" data-tab="review" type="button">Обзор</button>
+              <button class="tab" data-tab="features" type="button">Параметры</button>
+            </div>
+
+            <div id="tabReview" class="tab-content active">
+              <article id="reviewText" class="review-text"></article>
+            </div>
+
+            <div id="tabFeatures" class="tab-content">
+              <div class="features-grid" id="featuresGrid"></div>
+              <details class="raw-json">
+                <summary>Полный JSON</summary>
+                <pre id="rawJson"></pre>
+              </details>
+            </div>
+          </section>
+        </div>
       </section>
 
-      <div id="status" class="status hidden"></div>
+      <section class="workspace-view" id="growth-view">
+        <div class="panel agent-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Creative workflow</p>
+              <h2>Growth Copilot</h2>
+            </div>
+            <span class="badge">AI content ideas</span>
+          </div>
 
-      <section id="results" class="results hidden">
-        <div class="score-card">
-          <div class="score-value" id="scoreValue">—</div>
-          <div class="score-label">Оценка критика</div>
-          <div class="review-source" id="reviewSource"></div>
-        </div>
+          <div class="agent-layout">
+            <div class="agent-form-wrap">
+              <label class="field-label" for="growthFileInput">Трек для анализа</label>
+              <input type="file" id="growthFileInput" accept=".mp3,.wav,.flac,.ogg,.m4a,.aac">
 
-        <div class="tabs">
-          <button class="tab active" data-tab="review">Обзор</button>
-          <button class="tab" data-tab="features">Параметры</button>
-        </div>
+              <label class="field-label" for="artistMaterials">Материалы артиста / контекст</label>
+              <textarea id="artistMaterials" rows="5" placeholder="Например: жанр, стиль, идеи, ссылки, текущий релиз, аудитория, что важно подчеркнуть..."></textarea>
 
-        <div id="tabReview" class="tab-content active">
-          <article id="reviewText" class="review-text"></article>
-        </div>
+              <button id="startGrowthBtn" type="button" class="btn btn-primary">Сгенерировать идеи</button>
+            </div>
 
-        <div id="tabFeatures" class="tab-content">
-          <div class="features-grid" id="featuresGrid"></div>
-          <details class="raw-json">
-            <summary>Полный JSON</summary>
-            <pre id="rawJson"></pre>
-          </details>
+            <div class="agent-output">
+              <div id="growthStatus" class="status hidden"></div>
+
+              <div id="ideasPanel" class="idea-panel hidden">
+                <div class="mini-header">
+                  <h3>Подходящие идеи</h3>
+                  <button id="generateDraftsBtn" type="button" class="btn btn-secondary">Сгенерировать черновики</button>
+                </div>
+                <div id="ideasGrid" class="ideas-grid"></div>
+              </div>
+
+              <div id="draftsPanel" class="drafts-panel hidden">
+                <div class="mini-header">
+                  <h3>Черновики</h3>
+                </div>
+                <div id="draftsGrid" class="drafts-grid"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
 
     <footer>
       <p>Powered by <a href="https://essentia.upf.edu/" target="_blank" rel="noopener">Essentia</a>
-        · OpenAI (опционально)</p>
+        · OpenAI / Claude / Ollama · Growth Copilot</p>
     </footer>
   </div>
 

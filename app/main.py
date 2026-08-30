@@ -7,7 +7,8 @@ import uuid
 from pathlib import Path
 
 import aiofiles
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -23,6 +24,13 @@ from app.llm_providers import LLMProviderFactory
 from app.rag.knowledge import get_knowledge_base
 from app.review_generator import generate_review
 
+try:
+    from langgraph.types import Command
+    from app.agents.graph import growth_graph
+except ImportError:
+    Command = None  # type: ignore[assignment,misc]
+    growth_graph = None
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -31,6 +39,13 @@ app = FastAPI(
     description="Музыкальный анализ с Essentia и AI-критика",
     version=__version__,
 )
+
+
+class GrowthSelection(BaseModel):
+    """Выбор карточек после паузы графа."""
+
+    thread_id: str
+    selected_idea_ids: list[str] = Field(min_length=1)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -150,3 +165,66 @@ async def analyze(file: UploadFile = File(...)):
     finally:
         if file_path and file_path.exists():
             file_path.unlink(missing_ok=True)
+
+
+@app.post("/api/growth/start")
+async def growth_start(
+    file: UploadFile = File(...),
+    artist_materials: list[str] = Form(default=[]),
+):
+    """Запускает Growth Copilot до выбора карточек артистом."""
+    if growth_graph is None:
+        raise HTTPException(status_code=503, detail="Growth Copilot недоступен: установите langgraph")
+    if not file.filename or Path(file.filename).suffix.lower() not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Неподдерживаемый формат аудиофайла")
+    content = await file.read()
+    if not content or len(content) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="Пустой файл или превышен лимит размера")
+    suffix = Path(file.filename).suffix.lower()
+    file_path = UPLOAD_DIR / f"{uuid.uuid4().hex}{suffix}"
+    async with aiofiles.open(file_path, "wb") as target:
+        await target.write(content)
+    thread_id = uuid.uuid4().hex
+    config = {"configurable": {"thread_id": thread_id}}
+    try:
+        growth_graph.invoke(
+            {"audio_path": str(file_path), "artist_materials": artist_materials},
+            config,
+        )
+        snapshot = growth_graph.get_state(config)
+        return {"thread_id": thread_id, "content_ideas": snapshot.values.get("content_ideas", [])}
+    except Exception as exc:
+        file_path.unlink(missing_ok=True)
+        logger.exception("Ошибка запуска Growth Copilot")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/growth/select")
+async def growth_select(selection: GrowthSelection):
+    """Возобновляет граф с выбранными карточками и возвращает черновики."""
+    if growth_graph is None or Command is None:
+        raise HTTPException(status_code=503, detail="Growth Copilot недоступен")
+    config = {"configurable": {"thread_id": selection.thread_id}}
+    try:
+        result = growth_graph.invoke(
+            Command(resume={"selected_idea_ids": selection.selected_idea_ids}),
+            config,
+        )
+        snapshot = growth_graph.get_state(config)
+        audio_path = snapshot.values.get("audio_path")
+        if audio_path:
+            Path(audio_path).unlink(missing_ok=True)
+        return {"drafts": result.get("drafts", snapshot.values.get("drafts", {}))}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/growth/status/{thread_id}")
+async def growth_status(thread_id: str):
+    """Возвращает текущее состояние потока Growth Copilot."""
+    if growth_graph is None:
+        raise HTTPException(status_code=503, detail="Growth Copilot недоступен")
+    snapshot = growth_graph.get_state({"configurable": {"thread_id": thread_id}})
+    if not snapshot.values:
+        raise HTTPException(status_code=404, detail="Поток не найден")
+    return snapshot.values

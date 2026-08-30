@@ -3,6 +3,11 @@ const fileInput = document.getElementById("fileInput");
 const selectBtn = document.getElementById("selectBtn");
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
+const llmSettingsForm = document.getElementById("llmSettingsForm");
+const llmProvider = document.getElementById("llmProvider");
+const llmApiKey = document.getElementById("llmApiKey");
+const llmKeyStatus = document.getElementById("llmKeyStatus");
+const llmSettingsStatus = document.getElementById("llmSettingsStatus");
 
 const FEATURE_LABELS = {
   bpm: "Темп (BPM)",
@@ -22,6 +27,69 @@ const FEATURE_LABELS = {
 const growthState = {
   threadId: null,
 };
+
+const providerKeyNames = {
+  openai: "openai_key_set",
+  claude: "claude_key_set",
+  nemotron: "nemotron_key_set",
+};
+
+function updateLlmKeyStatus(settings) {
+  const provider = llmProvider.value;
+  const hasKey = provider === "ollama" || settings[providerKeyNames[provider]];
+  llmApiKey.disabled = provider === "ollama";
+  llmApiKey.required = provider !== "ollama";
+  llmApiKey.placeholder = provider === "ollama" ? "Для Ollama ключ не нужен" : "Введите новый ключ провайдера";
+  llmKeyStatus.textContent = provider === "ollama"
+    ? "Используется локальный сервер Ollama."
+    : hasKey ? "Ключ сохранён. Оставьте поле пустым, чтобы не менять его."
+      : "Ключ ещё не настроен.";
+}
+
+async function loadLlmSettings() {
+  try {
+    const response = await fetch("/api/settings");
+    if (!response.ok) throw new Error("Не удалось загрузить настройки");
+    const settings = await response.json();
+    llmProvider.value = settings.provider;
+    updateLlmKeyStatus(settings);
+    llmSettingsForm.dataset.settings = JSON.stringify(settings);
+  } catch (err) {
+    llmSettingsStatus.textContent = err.message;
+    llmSettingsStatus.className = "settings-status error";
+  }
+}
+
+async function saveLlmSettings(event) {
+  event.preventDefault();
+  const settings = JSON.parse(llmSettingsForm.dataset.settings || "{}");
+  const provider = llmProvider.value;
+  const apiKey = llmApiKey.value.trim();
+  if (provider !== "ollama" && !apiKey && !settings[providerKeyNames[provider]]) {
+    llmSettingsStatus.textContent = "Введите API ключ.";
+    llmSettingsStatus.className = "settings-status error";
+    return;
+  }
+
+  llmSettingsStatus.textContent = "Сохраняю…";
+  llmSettingsStatus.className = "settings-status";
+  try {
+    const response = await fetch("/api/settings/llm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, api_key: apiKey }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Не удалось сохранить настройки");
+    llmSettingsStatus.textContent = "Настройки сохранены.";
+    llmSettingsStatus.className = "settings-status success";
+    llmApiKey.value = "";
+    await loadLlmSettings();
+  } catch (err) {
+    llmSettingsStatus.textContent = err.message;
+    llmSettingsStatus.className = "settings-status error";
+  }
+}
 
 function switchWorkspace(name) {
   document.querySelectorAll(".workspace-tab").forEach((tab) => {
@@ -314,6 +382,13 @@ if (document.getElementById("generateDraftsBtn")) {
 document.querySelectorAll(".workspace-tab").forEach((tab) => {
   tab.addEventListener("click", () => switchWorkspace(tab.dataset.view));
 });
+
+llmProvider.addEventListener("change", () => {
+  const settings = JSON.parse(llmSettingsForm.dataset.settings || "{}");
+  updateLlmKeyStatus(settings);
+});
+llmSettingsForm.addEventListener("submit", saveLlmSettings);
+loadLlmSettings();
 
 // Tabs
 if (document.querySelectorAll(".tab").length) {

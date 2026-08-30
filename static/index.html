@@ -17,6 +17,23 @@
         <button class="workspace-tab active" data-view="analysis" type="button">Анализ трека</button>
         <button class="workspace-tab" data-view="growth" type="button">Growth Copilot</button>
       </div>
+      <details class="settings-panel">
+        <summary>Настройки LLM</summary>
+        <form id="llmSettingsForm" class="settings-form">
+          <label class="field-label" for="llmProvider">Провайдер</label>
+          <select id="llmProvider">
+            <option value="openai">OpenAI</option>
+            <option value="claude">Claude</option>
+            <option value="ollama">Ollama</option>
+            <option value="nemotron">Nemotron</option>
+          </select>
+          <label class="field-label" for="llmApiKey">API ключ</label>
+          <input id="llmApiKey" type="password" autocomplete="off" placeholder="Введите ключ провайдера">
+          <p id="llmKeyStatus" class="settings-hint"></p>
+          <button type="submit" class="btn btn-secondary">Сохранить настройки</button>
+          <div id="llmSettingsStatus" class="settings-status" role="status"></div>
+        </form>
+      </details>
     </header>
 
     <main>

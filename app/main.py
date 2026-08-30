@@ -19,7 +19,15 @@ from app.audio_analysis import (
     AudioAnalysisError,
     analyze_audio,
 )
-from app.config import MAX_UPLOAD_SIZE_BYTES, SUPPORTED_EXTENSIONS, STATIC_DIR, UPLOAD_DIR
+from app.config import (
+    MAX_UPLOAD_SIZE_BYTES,
+    SUPPORTED_EXTENSIONS,
+    STATIC_DIR,
+    UPLOAD_DIR,
+    get_runtime_llm_setting,
+    save_runtime_llm_settings,
+    set_runtime_llm_setting,
+)
 from app.llm_providers import LLMProviderFactory
 from app.rag.knowledge import get_knowledge_base
 from app.review_generator import generate_review
@@ -47,8 +55,62 @@ class GrowthSelection(BaseModel):
     thread_id: str
     selected_idea_ids: list[str] = Field(min_length=1)
 
+
+class LLMSettingsPayload(BaseModel):
+    """Настройки провайдера LLM из веб-интерфейса."""
+
+    provider: str = "openai"
+    api_key: str = ""
+
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.get("/api/settings")
+async def get_llm_settings():
+    """Возвращает текущие runtime-настройки LLM."""
+    provider = get_runtime_llm_setting("LLM_PROVIDER", "openai")
+    return {
+        "provider": provider,
+        "openai_key_set": bool(get_runtime_llm_setting("OPENAI_API_KEY", "")),
+        "claude_key_set": bool(get_runtime_llm_setting("ANTHROPIC_API_KEY", "")),
+        "nemotron_key_set": bool(get_runtime_llm_setting("NEMOTRON_API_KEY", "")),
+    }
+
+
+@app.post("/api/settings/llm")
+async def save_llm_settings(payload: LLMSettingsPayload):
+    """Сохраняет ключ API и выбранного провайдера через UI."""
+    provider = payload.provider.lower()
+    if provider not in {"openai", "claude", "ollama", "nemotron"}:
+        raise HTTPException(status_code=400, detail="Неподдерживаемый провайдер")
+
+    set_runtime_llm_setting("LLM_PROVIDER", provider)
+
+    if provider == "openai":
+        settings = {"LLM_PROVIDER": provider}
+        if payload.api_key.strip():
+            settings["OPENAI_API_KEY"] = payload.api_key
+        save_runtime_llm_settings(settings)
+    elif provider == "claude":
+        settings = {"LLM_PROVIDER": provider}
+        if payload.api_key.strip():
+            settings["ANTHROPIC_API_KEY"] = payload.api_key
+        save_runtime_llm_settings(settings)
+    elif provider == "nemotron":
+        settings = {"LLM_PROVIDER": provider}
+        if payload.api_key.strip():
+            settings["NEMOTRON_API_KEY"] = payload.api_key
+        save_runtime_llm_settings(settings)
+    else:
+        save_runtime_llm_settings({"LLM_PROVIDER": provider})
+
+    return {
+        "success": True,
+        "provider": provider,
+        "api_key_saved": bool(payload.api_key),
+    }
 
 
 @app.get("/")

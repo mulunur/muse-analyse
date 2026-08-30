@@ -8,17 +8,9 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from app.config import (
-    ANTHROPIC_API_KEY,
-    CLAUDE_MODEL,
     LLM_MAX_TOKENS,
     LLM_TEMPERATURE,
-    NEMOTRON_API_KEY,
-    NEMOTRON_BASE_URL,
-    NEMOTRON_MODEL,
-    OLLAMA_BASE_URL,
-    OLLAMA_MODEL,
-    OPENAI_API_KEY,
-    OPENAI_MODEL,
+    get_runtime_llm_setting,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,8 +87,8 @@ class OpenAIProvider(LLMProvider):
     """OpenAI GPT провайдер."""
 
     def __init__(self):
-        self.api_key = OPENAI_API_KEY
-        self.model = OPENAI_MODEL
+        self.api_key = get_runtime_llm_setting("OPENAI_API_KEY", "")
+        self.model = get_runtime_llm_setting("OPENAI_MODEL", "gpt-4o-mini")
 
     def is_available(self) -> bool:
         return bool(self.api_key)
@@ -159,8 +151,8 @@ class ClaudeProvider(LLMProvider):
     """Anthropic Claude провайдер."""
 
     def __init__(self):
-        self.api_key = ANTHROPIC_API_KEY
-        self.model = CLAUDE_MODEL
+        self.api_key = get_runtime_llm_setting("ANTHROPIC_API_KEY", "")
+        self.model = get_runtime_llm_setting("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
 
     def is_available(self) -> bool:
         return bool(self.api_key)
@@ -219,8 +211,8 @@ class OllamaProvider(LLMProvider):
     """Ollama локальный провайдер (поддержка Mistral, LLaMA и др.)."""
 
     def __init__(self):
-        self.base_url = OLLAMA_BASE_URL
-        self.model = OLLAMA_MODEL
+        self.base_url = get_runtime_llm_setting("OLLAMA_BASE_URL", "http://localhost:11434")
+        self.model = get_runtime_llm_setting("OLLAMA_MODEL", "mistral")
 
     def is_available(self) -> bool:
         try:
@@ -305,9 +297,9 @@ class NemotronProvider(LLMProvider):
     """NVIDIA Nemotron API провайдер."""
 
     def __init__(self):
-        self.api_key = NEMOTRON_API_KEY
-        self.model = NEMOTRON_MODEL
-        self.base_url = NEMOTRON_BASE_URL
+        self.api_key = get_runtime_llm_setting("NEMOTRON_API_KEY", "")
+        self.model = get_runtime_llm_setting("NEMOTRON_MODEL", "meta/llama-2-70b-chat")
+        self.base_url = get_runtime_llm_setting("NEMOTRON_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
     def is_available(self) -> bool:
         return bool(self.api_key)
@@ -406,9 +398,9 @@ class LLMProviderFactory:
         Raises:
             ValueError: Если провайдер не найден или недоступен
         """
-        from app.config import LLM_PROVIDER
+        from app.config import get_runtime_llm_setting
 
-        name = (provider_name or LLM_PROVIDER).lower()
+        name = (provider_name or get_runtime_llm_setting("LLM_PROVIDER", "openai")).lower()
 
         if name not in cls._providers:
             available = ", ".join(cls._providers.keys())

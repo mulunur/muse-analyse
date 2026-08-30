@@ -9,25 +9,77 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 STATIC_DIR = BASE_DIR / "static"
 
+_RUNTIME_OVERRIDES: dict[str, str] = {}
+
+
+def get_runtime_llm_setting(name: str, default: str = "") -> str:
+    """Возвращает live-значение настройки LLM, приоритет у runtime-перезаписи."""
+    key = name.upper()
+    if key in _RUNTIME_OVERRIDES:
+        value = _RUNTIME_OVERRIDES[key]
+        return value if value is not None else default
+    return os.getenv(key, default).strip()
+
+
+def set_runtime_llm_setting(name: str, value: str | None) -> str:
+    """Обновляет runtime-настройку и возвращает итоговое значение."""
+    key = name.upper()
+    if value is None or str(value).strip() == "":
+        _RUNTIME_OVERRIDES.pop(key, None)
+        os.environ.pop(key, None)
+        return ""
+
+    clean_value = str(value).strip()
+    _RUNTIME_OVERRIDES[key] = clean_value
+    os.environ[key] = clean_value
+    return clean_value
+
+
+def save_runtime_llm_settings(settings: dict[str, str]) -> None:
+    """Сохраняет настройки в .env, если файл существует или может быть создан."""
+    env_path = BASE_DIR / ".env"
+    existing: dict[str, str] = {}
+
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if not line or line.strip().startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            existing[key.strip()] = value.strip()
+
+    for key, value in settings.items():
+        if value is None or str(value).strip() == "":
+            existing.pop(key.upper(), None)
+            os.environ.pop(key.upper(), None)
+            _RUNTIME_OVERRIDES.pop(key.upper(), None)
+        else:
+            clean_value = str(value).strip()
+            existing[key.upper()] = clean_value
+            set_runtime_llm_setting(key, clean_value)
+
+    lines = [f"{key}={value}" for key, value in existing.items()]
+    env_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+
+
 # LLM Provider Selection
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
+LLM_PROVIDER = get_runtime_llm_setting("LLM_PROVIDER", "openai").lower()
 
 # OpenAI Configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_API_KEY = get_runtime_llm_setting("OPENAI_API_KEY", "")
+OPENAI_MODEL = get_runtime_llm_setting("OPENAI_MODEL", "gpt-4o-mini")
 
 # Anthropic Claude Configuration
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
+ANTHROPIC_API_KEY = get_runtime_llm_setting("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = get_runtime_llm_setting("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
 
 # Ollama Configuration (локальный запуск)
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral")
+OLLAMA_BASE_URL = get_runtime_llm_setting("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = get_runtime_llm_setting("OLLAMA_MODEL", "mistral")
 
 # Nemotron Configuration (NVIDIA API)
-NEMOTRON_API_KEY = os.getenv("NEMOTRON_API_KEY", "").strip()
-NEMOTRON_MODEL = os.getenv("NEMOTRON_MODEL", "meta/llama-2-70b-chat")
-NEMOTRON_BASE_URL = os.getenv("NEMOTRON_BASE_URL", "https://integrate.api.nvidia.com/v1")
+NEMOTRON_API_KEY = get_runtime_llm_setting("NEMOTRON_API_KEY", "")
+NEMOTRON_MODEL = get_runtime_llm_setting("NEMOTRON_MODEL", "meta/llama-2-70b-chat")
+NEMOTRON_BASE_URL = get_runtime_llm_setting("NEMOTRON_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
 # Upload Configuration
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))

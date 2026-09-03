@@ -38,6 +38,17 @@ class LLMProvider(ABC):
         """
         pass
 
+    def complete(self, prompt: str, *, system_prompt: str = "") -> str:
+        """
+        Возвращает сырой текстовый ответ LLM на произвольный промпт.
+
+        В отличие от generate_review, не навязывает роль музыкального критика
+        и схему обзора {score, sections, full_text} — нужен для сценариев,
+        где вызывающий код (например, агенты Growth Copilot) задаёт собственный
+        системный промпт и ожидает собственную структуру ответа.
+        """
+        raise NotImplementedError
+
     @staticmethod
     def _build_prompt(
         features: dict[str, Any],
@@ -92,6 +103,26 @@ class OpenAIProvider(LLMProvider):
 
     def is_available(self) -> bool:
         return bool(self.api_key)
+
+    def complete(self, prompt: str, *, system_prompt: str = "") -> str:
+        if not self.is_available():
+            raise ValueError("OPENAI_API_KEY не установлен")
+
+        from openai import OpenAI
+
+        client = OpenAI(api_key=self.api_key)
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS,
+        )
+        return response.choices[0].message.content or ""
 
     def generate_review(
         self,
@@ -156,6 +187,21 @@ class ClaudeProvider(LLMProvider):
 
     def is_available(self) -> bool:
         return bool(self.api_key)
+
+    def complete(self, prompt: str, *, system_prompt: str = "") -> str:
+        if not self.is_available():
+            raise ValueError("ANTHROPIC_API_KEY не установлен")
+
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=self.api_key)
+        message = client.messages.create(
+            model=self.model,
+            max_tokens=LLM_MAX_TOKENS,
+            system=system_prompt,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text or ""
 
     def generate_review(
         self,
@@ -222,6 +268,29 @@ class OllamaProvider(LLMProvider):
             return response.status_code == 200
         except Exception:
             return False
+
+    def complete(self, prompt: str, *, system_prompt: str = "") -> str:
+        if not self.is_available():
+            raise ValueError(
+                f"Ollama недоступна на {self.base_url}. "
+                "Убедитесь, что Ollama запущена локально."
+            )
+
+        import requests
+
+        full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+        payload = {
+            "model": self.model,
+            "prompt": full_prompt,
+            "stream": False,
+        }
+        response = requests.post(
+            f"{self.base_url}/api/generate",
+            json=payload,
+            timeout=120,
+        )
+        response.raise_for_status()
+        return response.json().get("response", "")
 
     def generate_review(
         self,
@@ -303,6 +372,38 @@ class NemotronProvider(LLMProvider):
 
     def is_available(self) -> bool:
         return bool(self.api_key)
+
+    def complete(self, prompt: str, *, system_prompt: str = "") -> str:
+        if not self.is_available():
+            raise ValueError("NEMOTRON_API_KEY не установлен")
+
+        import requests
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "application/json",
+        }
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": LLM_TEMPERATURE,
+            "max_tokens": LLM_MAX_TOKENS,
+            "top_p": 1,
+        }
+        response = requests.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=60,
+        )
+        response.raise_for_status()
+        result = response.json()
+        return result["choices"][0]["message"]["content"] or ""
 
     def generate_review(
         self,

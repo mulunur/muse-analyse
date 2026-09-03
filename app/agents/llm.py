@@ -7,13 +7,19 @@ from typing import Any
 
 from app.llm_providers import LLMProviderFactory
 
+GROWTH_COPILOT_SYSTEM_PROMPT = (
+    "Ты — ассистент по продвижению независимых музыкальных артистов. "
+    "Следуй инструкциям в промпте пользователя, включая требуемый формат ответа. "
+    "Если тебя просят ответить JSON — верни только валидный JSON без markdown-ограждений "
+    "и без лишнего текста до или после него."
+)
 
-def ask_llm(prompt: str, *, features: dict[str, Any] | None = None) -> str:
-    """Возвращает текст ответа существующего провайдера или пустую строку."""
+
+def ask_llm(prompt: str) -> str:
+    """Возвращает сырой текст ответа LLM-провайдера или пустую строку."""
     try:
         provider = LLMProviderFactory.get_provider()
-        result = provider.generate_review(features or {}, rag_context=prompt)
-        return str(result.get("full_text", ""))
+        return provider.complete(prompt, system_prompt=GROWTH_COPILOT_SYSTEM_PROMPT)
     except Exception:
         return ""
 

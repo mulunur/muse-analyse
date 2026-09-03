@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RhythmFeatures(BaseModel):
@@ -29,7 +29,7 @@ class TonalFeatures(BaseModel):
 
 class DynamicsFeatures(BaseModel):
     loudness_ebu128_lufs: float | None = None
-    loudness_db: float | None = None
+    loudness_stevens_power: float | None = None
     dynamic_complexity: float | None = None
     replay_gain_db: float | None = None
     rms: float | None = None
@@ -57,10 +57,14 @@ class AudioFeatures(BaseModel):
 
 
 class VoiceProfile(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tone: str
     recurring_themes: list[str]
     avoid_list: list[str]
-    register: Literal["classical", "contemporary"] = "classical"
+    voice_register: Literal["classical", "contemporary"] = Field(
+        default="classical", alias="register"
+    )
 
 
 class TrendContext(BaseModel):

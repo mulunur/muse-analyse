@@ -20,7 +20,7 @@ def ideation_agent(state: GrowthState) -> dict[str, list[ContentIdea]]:
         "story_series, bio_snippet. Только хук и обоснование, без полного текста. Голос имеет приоритет. Ответь JSON-массивом.\n"
         f"Аудио: {features}\nГолос: {profile}\nРынок: {trends}"
     )
-    parsed: Any = parse_json_response(ask_llm(prompt, features=features), [])
+    parsed: Any = parse_json_response(ask_llm(prompt), [])
     ideas: list[ContentIdea] = []
     if isinstance(parsed, list):
         for item in parsed:

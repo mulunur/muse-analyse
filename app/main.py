@@ -273,12 +273,14 @@ async def growth_select(selection: GrowthSelection):
             config,
         )
         snapshot = growth_graph.get_state(config)
-        audio_path = snapshot.values.get("audio_path")
-        if audio_path:
-            Path(audio_path).unlink(missing_ok=True)
         return {"drafts": result.get("drafts", snapshot.values.get("drafts", {}))}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        snapshot = growth_graph.get_state(config)
+        audio_path = snapshot.values.get("audio_path") if snapshot else None
+        if audio_path:
+            Path(audio_path).unlink(missing_ok=True)
 
 
 @app.get("/api/growth/status/{thread_id}")

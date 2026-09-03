@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 ESSENTIA_AVAILABLE = False
@@ -35,7 +37,13 @@ def _coerce_to_float(value: Any, default: float | None = None) -> float | None:
     if isinstance(value, tuple):
         if not value:
             return default
-        # В некоторых версиях Essentia возвращает (value, extra_info) или подобное.
+        # Essentia часто возвращает (scalar, extra_array, ...), например
+        # RhythmExtractor2013 -> (bpm, beats, confidence, ...) или
+        # Danceability -> (danceability, dfa_array). Предпочитаем сам
+        # скаляр, а не усреднённый массив из "лишних" элементов кортежа.
+        for item in value:
+            if isinstance(item, (int, float)):
+                return float(item)
         for item in value:
             coerced = _coerce_to_float(item, default=None)
             if coerced is not None:
@@ -97,7 +105,6 @@ def _frame_features(audio: Any, sample_rate: int) -> dict[str, float]:
     zcrs: list[float] = []
     mfcc_means: list[list[float]] = []
 
-    prev_spectrum = None
     for frame in es.FrameGenerator(audio, frameSize=frame_size, hopSize=hop_size):
         windowed = windowing(frame)
         spectrum = spectrum_algo(windowed)
@@ -106,16 +113,9 @@ def _frame_features(audio: Any, sample_rate: int) -> dict[str, float]:
         rolloffs.append(float(rolloff_algo(spectrum)))
         zcrs.append(float(zcr_algo(frame)))
 
-        if prev_spectrum is not None:
-            try:
-                flux_value = flux_algo(spectrum, prev_spectrum)
-            except Exception:
-                try:
-                    flux_value = flux_algo(spectrum)
-                except Exception:
-                    flux_value = 0.0
-            fluxes.append(float(_coerce_to_float(flux_value, default=0.0)))
-        prev_spectrum = spectrum
+        # Flux хранит предыдущий спектр во внутреннем состоянии и принимает
+        # только текущий кадр — второй позиционный аргумент не поддерживается.
+        fluxes.append(float(flux_algo(spectrum)))
 
         _, mfcc_coeffs = mfcc_algo(spectrum)
         mfcc_means.append([float(c) for c in mfcc_coeffs])
@@ -143,21 +143,48 @@ def _frame_features(audio: Any, sample_rate: int) -> dict[str, float]:
     }
 
 
-def _tonal_features(audio: Any) -> dict[str, Any]:
+def _extract_hpcp_frames(
+    audio: Any, sample_rate: int, frame_size: int = 2048, hop_size: int = 1024
+) -> list[Any]:
+    """Извлекает последовательность HPCP (pitch class profile) по кадрам для ChordsDetection."""
+    windowing = es.Windowing(type="hann", size=frame_size)
+    spectrum_algo = es.Spectrum(size=frame_size)
+    peaks_algo = es.SpectralPeaks(sampleRate=sample_rate, orderBy="magnitude")
+    hpcp_algo = es.HPCP(sampleRate=sample_rate)
+
+    hpcp_frames = []
+    for frame in es.FrameGenerator(audio, frameSize=frame_size, hopSize=hop_size):
+        windowed = windowing(frame)
+        spectrum = spectrum_algo(windowed)
+        freqs, mags = peaks_algo(spectrum)
+        hpcp_frames.append(hpcp_algo(freqs, mags))
+    return hpcp_frames
+
+
+def _tonal_features(audio: Any, sample_rate: int) -> dict[str, Any]:
     """Тональность, гармония и танцевальность."""
     key, scale, key_strength = es.KeyExtractor()(audio)
     tuning_freq = _coerce_to_float(es.TuningFrequencyExtractor()(audio))
 
     try:
-        danceability, dfa = es.Danceability()(audio)
-        danceability = round(_coerce_to_float(danceability, default=None), 4) if _coerce_to_float(danceability, default=None) is not None else None
+        danceability_raw, dfa = es.Danceability()(audio)
+        danceability_raw = _coerce_to_float(danceability_raw, default=None)
+        # Essentia: "Normal values range from 0 to ~3" — нормализуем к 0–1,
+        # т.к. весь остальной код (обзоры, RAG, фронтенд) ожидает эту шкалу.
+        danceability = (
+            round(min(max(danceability_raw / 3.0, 0.0), 1.0), 4)
+            if danceability_raw is not None
+            else None
+        )
         dfa_value = round(_coerce_to_float(dfa, default=None), 4) if _coerce_to_float(dfa, default=None) is not None else None
     except Exception:
         danceability = None
         dfa_value = None
 
     try:
-        chords, strength = es.ChordsDetection()(audio)
+        # ChordsDetection принимает последовательность HPCP-кадров, а не сырое аудио.
+        hpcp_frames = _extract_hpcp_frames(audio, sample_rate)
+        chords, strength = es.ChordsDetection(sampleRate=sample_rate, hopSize=1024)(hpcp_frames)
         chord_hist: dict[str, int] = {}
         for chord in chords:
             chord_hist[chord] = chord_hist.get(chord, 0) + 1
@@ -183,12 +210,15 @@ def _rhythm_features(audio: Any) -> dict[str, Any]:
 
     onset_rate = _coerce_to_float(es.OnsetRate()(audio), default=None)
     try:
-        beat_loudness = _coerce_to_float(es.BeatLoudness()(audio), default=None)
+        # BeatsLoudness (не BeatLoudness/BeatLoudnessBandRatio — таких алгоритмов
+        # в Essentia нет) возвращает громкость и её распределение по частотным
+        # полосам для каждого удара, используя позиции ударов из RhythmExtractor2013.
+        beat_loudness_values, beat_loudness_band_ratio_values = es.BeatsLoudness(beats=beats)(audio)
+        beat_loudness = _coerce_to_float(list(beat_loudness_values), default=None)
+        flat_band_ratios = [v for row in beat_loudness_band_ratio_values for v in row]
+        beat_loudness_band_ratio = _coerce_to_float(flat_band_ratios, default=None)
     except Exception:
         beat_loudness = None
-    try:
-        beat_loudness_band_ratio = _coerce_to_float(es.BeatLoudnessBandRatio()(audio), default=None)
-    except Exception:
         beat_loudness_band_ratio = None
 
     return {
@@ -209,12 +239,17 @@ def _rhythm_features(audio: Any) -> dict[str, Any]:
 def _dynamics_features(audio: Any) -> dict[str, Any]:
     """Громкость и динамика."""
     try:
-        _, _, loudness_ebu, _ = es.LoudnessEBUR128()(audio)
+        # LoudnessEBUR128 требует стерео-сигнал (vector_stereosample); у нас
+        # моно-загрузка, поэтому дублируем канал, чтобы получить валидный вход.
+        stereo_audio = np.column_stack([audio, audio]).astype(np.float32)
+        _, _, loudness_ebu, _ = es.LoudnessEBUR128()(stereo_audio)
         loudness_ebu = _coerce_to_float(loudness_ebu, default=None)
     except Exception:
         loudness_ebu = None
 
-    loudness = _coerce_to_float(es.Loudness()(audio), default=None)
+    # Loudness реализует степенной закон Стивенса (energy ** 0.67) — это НЕ
+    # значение в децибелах, несмотря на похожее название алгоритма.
+    loudness_stevens = _coerce_to_float(es.Loudness()(audio), default=None)
     dynamic_complexity = _coerce_to_float(es.DynamicComplexity()(audio), default=None)
 
     try:
@@ -226,7 +261,7 @@ def _dynamics_features(audio: Any) -> dict[str, Any]:
 
     return {
         "loudness_ebu128_lufs": round(loudness_ebu, 2) if loudness_ebu is not None else None,
-        "loudness_db": round(loudness, 2) if loudness is not None else None,
+        "loudness_stevens_power": round(loudness_stevens, 2) if loudness_stevens is not None else None,
         "dynamic_complexity": round(dynamic_complexity, 4) if dynamic_complexity is not None else None,
         "replay_gain_db": round(replay_gain, 2) if replay_gain is not None else None,
         "rms": round(rms, 4) if rms is not None else None,
@@ -277,7 +312,7 @@ def analyze_audio(file_path: str | Path) -> dict[str, Any]:
 
     try:
         rhythm = _rhythm_features(audio)
-        tonal = _tonal_features(audio)
+        tonal = _tonal_features(audio, sample_rate)
         dynamics = _dynamics_features(audio)
         spectral = _frame_features(audio, sample_rate)
     except Exception as exc:

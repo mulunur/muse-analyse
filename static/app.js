@@ -163,6 +163,9 @@ function renderReview(review) {
 
   const sourceMap = {
     openai: `AI-обзор (${review.model || "OpenAI"})`,
+    claude: `AI-обзор (${review.model || "Claude"})`,
+    ollama: `AI-обзор (${review.model || "Ollama"})`,
+    nemotron: `AI-обзор (${review.model || "Nemotron"})`,
     template: "Шаблонный обзор (без API)",
   };
   document.getElementById("reviewSource").textContent = sourceMap[review.source] || review.source;
@@ -217,10 +220,10 @@ function renderGrowthIdeas(ideas) {
 
   ideasGrid.innerHTML = ideas.map((idea) => `
     <label class="idea-card">
-      <input type="checkbox" value="${idea.id || idea.title}" class="idea-checkbox">
+      <input type="checkbox" value="${idea.id || idea.hook}" class="idea-checkbox">
       <div class="idea-content">
-        <div class="idea-title">${idea.title || "Новая идея"}</div>
-        <div class="idea-hook">${idea.hook || idea.summary || "Описание идеи"}</div>
+        <div class="idea-title">${idea.hook || "Новая идея"}</div>
+        <div class="idea-hook">${idea.rationale || "Описание идеи"}</div>
       </div>
     </label>
   `).join("");

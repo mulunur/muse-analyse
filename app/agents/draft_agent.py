@@ -20,9 +20,9 @@ def draft_agent(state: GrowthState) -> dict[str, dict[str, str]]:
             "Разверни следующую идею контента в полный финальный текст, готовый к публикации. "
             f"Строго придерживайся голоса артиста: тон {profile.tone if profile else 'авторский'}, "
             f"избегай: {profile.avoid_list if profile else []}. "
-            f"Регистр: {profile.register if profile else 'classical'}. Верни только финальный текст.\n"
+            f"Регистр: {profile.voice_register if profile else 'classical'}. Верни только финальный текст.\n"
             f"Идея: {idea.model_dump()}\nАудио: {features}\n"
             f"Замечание проверки: {state.critique_feedback or 'нет'}"
         )
-        drafts[idea_id] = ask_llm(prompt, features=features) or idea.hook
+        drafts[idea_id] = ask_llm(prompt) or idea.hook
     return {"drafts": drafts, "retry_count": state.retry_count + 1}

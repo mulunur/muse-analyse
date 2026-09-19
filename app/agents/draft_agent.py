@@ -2,8 +2,25 @@
 
 from __future__ import annotations
 
-from app.agents.llm import ask_llm
+from langchain_core.prompts import ChatPromptTemplate
+
+from app.agents.llm import invoke_text
 from app.agents.state import GrowthState
+
+_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "Разверни идею контента в полный финальный текст, готовый к публикации. "
+            "Строго придерживайся голоса артиста: тон {tone}, избегай: {avoid_list}. "
+            "Регистр: {register}. Верни только финальный текст.",
+        ),
+        (
+            "human",
+            "Идея: {idea}\nАудио: {features}\nЗамечание проверки: {critique}",
+        ),
+    ]
+)
 
 
 def draft_agent(state: GrowthState) -> dict[str, dict[str, str]]:
@@ -16,13 +33,18 @@ def draft_agent(state: GrowthState) -> dict[str, dict[str, str]]:
         idea = ideas.get(idea_id)
         if not idea:
             continue
-        prompt = (
-            "Разверни следующую идею контента в полный финальный текст, готовый к публикации. "
-            f"Строго придерживайся голоса артиста: тон {profile.tone if profile else 'авторский'}, "
-            f"избегай: {profile.avoid_list if profile else []}. "
-            f"Регистр: {profile.voice_register if profile else 'classical'}. Верни только финальный текст.\n"
-            f"Идея: {idea.model_dump()}\nАудио: {features}\n"
-            f"Замечание проверки: {state.critique_feedback or 'нет'}"
+        drafts[idea_id] = (
+            invoke_text(
+                _PROMPT,
+                {
+                    "tone": profile.tone if profile else "авторский",
+                    "avoid_list": profile.avoid_list if profile else [],
+                    "register": profile.voice_register if profile else "classical",
+                    "idea": idea.model_dump(),
+                    "features": features,
+                    "critique": state.critique_feedback or "нет",
+                },
+            )
+            or idea.hook
         )
-        drafts[idea_id] = ask_llm(prompt) or idea.hook
     return {"drafts": drafts, "retry_count": state.retry_count + 1}

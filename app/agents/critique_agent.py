@@ -4,23 +4,49 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.agents.llm import ask_llm, parse_json_response
+from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel
+
+from app.agents.llm import invoke_structured
 from app.agents.state import GrowthState
+
+
+class Critique(BaseModel):
+    passed: bool
+    feedback: str
+
+
+_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "Проверь черновики: соответствие тону, отсутствие слов из avoid_list и тематическую консистентность. "
+            "passed=true только если все три условия выполнены; в feedback кратко опиши, что исправить.",
+        ),
+        (
+            "human",
+            "Тон: {tone}; темы: {themes}; avoid_list: {avoid_list}\nЧерновики: {drafts}",
+        ),
+    ]
+)
 
 
 def critique_agent(state: GrowthState) -> dict[str, object]:
     """Оценивает черновики по голосу, запретным словам и темам."""
     profile = state.voice_profile
-    prompt = (
-        "Проверь черновики: соответствие тону, отсутствие слов из avoid_list и тематическую консистентность. "
-        "Верни строго JSON {\"passed\": bool, \"feedback\": str}.\n"
-        f"Тон: {profile.tone if profile else ''}; темы: {profile.recurring_themes if profile else []}; "
-        f"avoid_list: {profile.avoid_list if profile else []}\nЧерновики: {state.drafts}"
+    critique = invoke_structured(
+        _PROMPT,
+        Critique,
+        {
+            "tone": profile.tone if profile else "",
+            "themes": profile.recurring_themes if profile else [],
+            "avoid_list": profile.avoid_list if profile else [],
+            "drafts": state.drafts,
+        },
     )
-    parsed = parse_json_response(ask_llm(prompt), {})
-    passed = bool(parsed.get("passed", True)) if isinstance(parsed, dict) else True
-    feedback = str(parsed.get("feedback", "Проверка пройдена.")) if isinstance(parsed, dict) else "Проверка пройдена."
-    return {"critique_passed": passed, "critique_feedback": feedback}
+    if critique is None:
+        critique = Critique(passed=True, feedback="Проверка пройдена.")
+    return {"critique_passed": critique.passed, "critique_feedback": critique.feedback}
 
 
 def critique_router(state: GrowthState) -> Literal["retry", "done"]:

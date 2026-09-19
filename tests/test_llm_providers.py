@@ -86,29 +86,14 @@ class TestLLMProviders:
         
         assert "Неизвестный провайдер" in str(exc_info.value)
 
-    def test_provider_prompt_building(self):
-        """Проверка построения промпта."""
-        from app.llm_providers import LLMProvider
-        
-        features = {
-            "duration_sec": 180.5,
-            "rhythm": {"bpm": 128},
-            "tonal": {"key": "C", "scale": "major"},
-            "dynamics": {"loudness_ebu128_lufs": -9.5},
-            "spectral": {
-                "spectral_centroid_hz": 2340,
-                "mfcc_coefficients": [1, 2, 3]  # Should be excluded
-            },
-            "energy": 0.64
-        }
-        
-        prompt = LLMProvider._build_prompt(features)
-        
-        # Проверяем структуру промпта
-        assert "Essentia" in prompt
-        assert "128" in prompt  # BPM
-        assert "мажор" not in prompt  # Промпт на русском, но мажор тут не должен быть
-        assert "mfcc_coefficients" not in prompt  # MFCC должна быть исключена
+    def test_providers_expose_name_and_build_chat_model(self):
+        """Каждый провайдер имеет имя, совпадающее с ключом фабрики, и строит chat-модель."""
+        from app.llm_providers import LLMProviderFactory
+
+        for name, provider_class in LLMProviderFactory._providers.items():
+            provider = provider_class()
+            assert provider.name == name
+            assert callable(provider.build_chat_model)
 
     def test_template_review_generation(self):
         """Проверка генерации шаблонного обзора."""

@@ -6,10 +6,71 @@ import json
 import logging
 from typing import Any
 
-from app.llm_providers import LLMProviderFactory
+from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel, Field
+
+from app.llm_providers import LLMProvider, LLMProviderFactory
 from app.rag.knowledge import retrieve_rag_context
 
 logger = logging.getLogger(__name__)
+
+
+class ReviewSections(BaseModel):
+    """Разделы обзора; порядок полей задаёт порядок в полном тексте."""
+
+    summary: str = Field(description="Краткое резюме трека")
+    rhythm: str = Field(description="Ритм и темп")
+    tonality: str = Field(description="Тональность и гармония")
+    production: str = Field(description="Динамика, звучание и продакшн")
+    verdict: str = Field(description="Итоговый вывод")
+
+
+class TrackReview(BaseModel):
+    """Структура, которую LLM возвращает вместо свободного JSON."""
+
+    score: float = Field(description="Оценка трека от 1 до 10")
+    sections: ReviewSections
+
+
+_REVIEW_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "Ты — профессиональный музыкальный критик. На основе объективных параметров "
+            "аудиоанализа (библиотека Essentia) напиши структурированный обзор трека на русском языке. "
+            "Пиши профессионально, но доступно. Не выдумывай жанр или исполнителя — "
+            "опирайся только на параметры.",
+        ),
+        ("human", "Параметры анализа (JSON):\n{features}{rag_section}"),
+    ]
+)
+
+_RAG_INSTRUCTION = (
+    "При анализе опирайся на параметры Essentia и, где уместно, "
+    "обосновывай оценки терминами и концепциями из учебника "
+    "(композиция, гармония, ритм, форма, фактура). "
+    "Не цитируй учебник дословно — интерпретируй применительно к треку."
+)
+
+
+def _compact_features(features: dict[str, Any]) -> dict[str, Any]:
+    """Признаки для промпта: без MFCC — длинный числовой вектор не нужен критику."""
+    return {
+        "duration_sec": features.get("duration_sec"),
+        "rhythm": features.get("rhythm"),
+        "tonal": features.get("tonal"),
+        "dynamics": features.get("dynamics"),
+        "spectral": {
+            k: v
+            for k, v in features.get("spectral", {}).items()
+            if k != "mfcc_coefficients"
+        },
+        "energy": features.get("energy"),
+    }
+
+
+def _rag_section(rag_context: str) -> str:
+    return f"\n\n{rag_context}\n\n{_RAG_INSTRUCTION}" if rag_context else ""
 
 SCALE_RU = {
     "major": "мажор",
@@ -185,6 +246,29 @@ def _build_template_review(features: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _generate_llm_review(
+    provider: LLMProvider, features: dict[str, Any], rag_context: str
+) -> dict[str, Any]:
+    """Один вызов LLM: промпт -> модель со структурированным выводом -> словарь обзора."""
+    chain = _REVIEW_PROMPT | provider.structured_model(TrackReview)
+    result: TrackReview = chain.invoke(
+        {
+            "features": json.dumps(_compact_features(features), ensure_ascii=False, indent=2),
+            "rag_section": _rag_section(rag_context),
+        }
+    )
+    sections = result.sections.model_dump()
+    return {
+        "source": provider.name,
+        "language": "ru",
+        "model": provider.model,
+        "score": round(min(max(result.score, 1.0), 10.0), 1),
+        "sections": sections,
+        # Полный текст собираем из разделов, а не просим у модели второй раз.
+        "full_text": "\n\n".join(sections.values()),
+    }
+
+
 def generate_review(features: dict[str, Any]) -> dict[str, Any]:
     """
     Генерирует музыкальный обзор.
@@ -200,26 +284,26 @@ def generate_review(features: dict[str, Any]) -> dict[str, Any]:
     """
     try:
         provider = LLMProviderFactory.get_provider()
-        logger.info("Используется LLM провайдер: %s", provider.__class__.__name__)
-
-        rag_context, rag_passages = retrieve_rag_context(features)
-        review = provider.generate_review(features, rag_context=rag_context)
-
-        if rag_passages:
-            review["rag"] = {
-                "enabled": True,
-                "passages_used": len(rag_passages),
-                "sources": list({p.get("source") for p in rag_passages if p.get("source")}),
-            }
-
-        return review
-
     except ValueError as exc:
         logger.warning("LLM провайдер недоступен (%s) — используется шаблонный обзор", exc)
         return _build_template_review(features)
+
+    logger.info("Используется LLM провайдер: %s", provider.__class__.__name__)
+
+    try:
+        rag_context, rag_passages = retrieve_rag_context(features)
+        review = _generate_llm_review(provider, features, rag_context)
     except Exception as exc:
         logger.warning("Ошибка LLM (%s) — fallback на шаблон", exc)
         result = _build_template_review(features)
         result["llm_error"] = str(exc)
         return result
 
+    if rag_passages:
+        review["rag"] = {
+            "enabled": True,
+            "passages_used": len(rag_passages),
+            "sources": list({p.get("source") for p in rag_passages if p.get("source")}),
+        }
+
+    return review

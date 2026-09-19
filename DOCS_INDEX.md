@@ -137,9 +137,13 @@ from app.config import LLM_PROVIDER, OPENAI_API_KEY, ...
 ```python
 from app.llm_providers import LLMProviderFactory
 
-# Получить текущего провайдера
+# Получить текущего провайдера и его LangChain-модель
 provider = LLMProviderFactory.get_provider()
-review = provider.generate_review(features)
+chat_model = provider.build_chat_model()
+
+# Обзор трека (LLM + RAG, с fallback на шаблон)
+from app.review_generator import generate_review
+review = generate_review(features)
 
 # Список доступных
 providers = LLMProviderFactory.list_available_providers()
@@ -216,7 +220,7 @@ python examples_test_providers.py /path/to/track.mp3
 ### Документация для улучшений
 - Смотрите [ARCHITECTURE.md](ARCHITECTURE.md#расширение-архитектуры)
 - Примеры в [examples_test_providers.py](examples_test_providers.py)
-- Тесты в [tests_test_llm_providers.py](tests_test_llm_providers.py)
+- Тесты в [tests/test_llm_providers.py](tests/test_llm_providers.py)
 
 ## ✨ Спасибо за использование Muse Analyse!
 

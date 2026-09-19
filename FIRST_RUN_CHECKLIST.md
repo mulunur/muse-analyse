@@ -32,7 +32,7 @@ OPENAI_MODEL=gpt-4o-mini
 ```env
 LLM_PROVIDER=claude
 ANTHROPIC_API_KEY=sk-ant-your-api-key-here
-CLAUDE_MODEL=claude-3-5-sonnet-20241022
+CLAUDE_MODEL=claude-sonnet-5
 ```
 - [ ] API ключ получен (https://console.anthropic.com/)
 - [ ] Ключ добавлен в `.env`

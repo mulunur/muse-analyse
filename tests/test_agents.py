@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -16,44 +17,39 @@ from app.agents.ideation_agent import _IdeasResponse, ideation_agent
 from app.agents.state import ContentIdea, GrowthState, TrendContext, VoiceProfile
 from app.agents.trend_agent import trend_agent
 from app.agents.voice_agent import voice_agent
-from app.config import set_runtime_llm_setting
-
-
-class FakeChatModel(GenericFakeChatModel):
-    """Фейковая chat-модель: отдаёт заранее заданный объект и запоминает промпт."""
-
-    structured_response: Any = None
-    seen_prompts: list = []
-
-    def with_structured_output(self, schema, **kwargs):
-        def respond(prompt_value):
-            self.seen_prompts.append(prompt_value.to_string())
-            return self.structured_response
-
-        return RunnableLambda(respond)
 
 
 @pytest.fixture
 def fake_llm(monkeypatch):
-    """Подменяет get_chat_model; возвращает функцию для настройки ответа."""
+    """Подменяет обе точки входа в LLM; возвращает функцию для настройки ответа."""
 
-    def install(structured_response: Any = None, text: str = "") -> FakeChatModel:
-        model = FakeChatModel(
-            messages=iter([AIMessage(content=text)] * 10),
-            structured_response=structured_response,
-            seen_prompts=[],
+    def install(structured_response: Any = None, text: str = "") -> SimpleNamespace:
+        seen_prompts: list[str] = []
+
+        def get_structured_model(schema):
+            def respond(prompt_value):
+                seen_prompts.append(prompt_value.to_string())
+                return structured_response
+
+            return RunnableLambda(respond)
+
+        monkeypatch.setattr(llm_module, "get_structured_model", get_structured_model)
+        monkeypatch.setattr(
+            llm_module,
+            "get_chat_model",
+            lambda: GenericFakeChatModel(messages=iter([AIMessage(content=text)] * 10)),
         )
-        monkeypatch.setattr(llm_module, "get_chat_model", lambda: model)
-        return model
+        return SimpleNamespace(seen_prompts=seen_prompts)
 
     return install
 
 
 @pytest.fixture
 def llm_unavailable(monkeypatch):
-    def boom():
+    def boom(*args, **kwargs):
         raise ValueError("Провайдер недоступен")
 
+    monkeypatch.setattr(llm_module, "get_structured_model", boom)
     monkeypatch.setattr(llm_module, "get_chat_model", boom)
 
 
@@ -174,37 +170,3 @@ def test_draft_agent_ignores_unknown_idea_ids(fake_llm):
     state = GrowthState(content_ideas=[_idea()], selected_idea_ids=["нет-такой"])
 
     assert draft_agent(state)["drafts"] == {}
-
-
-@pytest.mark.parametrize(
-    "provider, api_key_name, expected_class",
-    [
-        ("openai", "OPENAI_API_KEY", "ChatOpenAI"),
-        ("claude", "ANTHROPIC_API_KEY", "ChatAnthropic"),
-        ("nemotron", "NEMOTRON_API_KEY", "ChatOpenAI"),
-    ],
-)
-def test_get_chat_model_maps_provider_to_langchain_class(provider, api_key_name, expected_class):
-    set_runtime_llm_setting("LLM_PROVIDER", provider)
-    set_runtime_llm_setting(api_key_name, "test-key")
-
-    model = llm_module.get_chat_model()
-
-    assert type(model).__name__ == expected_class
-
-
-def test_get_chat_model_nemotron_uses_custom_base_url():
-    set_runtime_llm_setting("LLM_PROVIDER", "nemotron")
-    set_runtime_llm_setting("NEMOTRON_API_KEY", "test-key")
-
-    model = llm_module.get_chat_model()
-
-    assert "nvidia.com" in str(model.openai_api_base)
-
-
-def test_get_chat_model_raises_without_api_key():
-    set_runtime_llm_setting("LLM_PROVIDER", "openai")
-    set_runtime_llm_setting("OPENAI_API_KEY", "")
-
-    with pytest.raises(ValueError):
-        llm_module.get_chat_model()

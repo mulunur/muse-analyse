@@ -1,13 +1,17 @@
-"""LLM провайдеры для генерации музыкальных обзоров."""
+"""LLM провайдеры: настройки и построение LangChain chat-моделей."""
 
 from __future__ import annotations
 
-import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
+
+from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables import Runnable
+from pydantic import BaseModel
 
 from app.config import (
+    DEFAULT_CLAUDE_MODEL,
     LLM_MAX_TOKENS,
     LLM_TEMPERATURE,
     get_runtime_llm_setting,
@@ -17,74 +21,37 @@ logger = logging.getLogger(__name__)
 
 
 class LLMProvider(ABC):
-    """Абстрактный интерфейс для LLM провайдеров."""
+    """Провайдер знает свои настройки и умеет строить LangChain chat-модель.
+
+    Сам вызов модели, разбор ответа и валидацию схемы выполняет LangChain,
+    поэтому провайдеру не нужен собственный код общения с API.
+    """
+
+    name: ClassVar[str]
+    model: str
+    # Доп. аргументы для chat.with_structured_output(): у провайдеров разные
+    # способы получить структурированный ответ.
+    structured_output_kwargs: ClassVar[dict[str, Any]] = {}
 
     @abstractmethod
-    def generate_review(
-        self,
-        features: dict[str, Any],
-        *,
-        rag_context: str = "",
-    ) -> dict[str, Any]:
-        """
-        Генерирует музыкальный обзор на основе признаков.
+    def is_available(self) -> bool:
+        """Есть ли ключ / доступен ли сервис."""
 
-        Args:
-            features: Словарь со всеми параметрами аудиоанализа
-            rag_context: Справочный контекст из RAG (учебник)
+    @abstractmethod
+    def build_chat_model(self) -> BaseChatModel:
+        """Создаёт LangChain chat-модель с настройками провайдера."""
 
-        Returns:
-            Словарь с полями: source, language, score, sections, full_text, model
-        """
-        pass
-
-    @staticmethod
-    def _build_prompt(
-        features: dict[str, Any],
-        *,
-        rag_context: str = "",
-    ) -> str:
-        """Строит промпт для генерации обзора."""
-        compact = {
-            "duration_sec": features.get("duration_sec"),
-            "rhythm": features.get("rhythm"),
-            "tonal": features.get("tonal"),
-            "dynamics": features.get("dynamics"),
-            "spectral": {
-                k: v
-                for k, v in features.get("spectral", {}).items()
-                if k != "mfcc_coefficients"
-            },
-            "energy": features.get("energy"),
-        }
-
-        rag_section = ""
-        if rag_context:
-            rag_section = (
-                f"\n\n{rag_context}\n\n"
-                "При анализе опирайся на параметры Essentia и, где уместно, "
-                "обосновывай оценки терминами и концепциями из учебника "
-                "(композиция, гармония, ритм, форма, фактура). "
-                "Не цитируй учебник дословно — интерпретируй применительно к треку."
-            )
-
-        return (
-            "Ты — профессиональный музыкальный критик. На основе объективных параметров "
-            "аудиоанализа (библиотека Essentia) напиши структурированный обзор трека на русском языке.\n\n"
-            "Параметры анализа (JSON):\n"
-            f"{json.dumps(compact, ensure_ascii=False, indent=2)}"
-            f"{rag_section}\n\n"
-            "Формат ответа — JSON с полями:\n"
-            '- "score": число 1–10\n'
-            '- "sections": объект с ключами summary, rhythm, tonality, production, verdict\n'
-            '- "full_text": полный связный текст обзора\n\n'
-            "Пиши профессионально, но доступно. Не выдумывай жанр или исполнителя — "
-            "опирайся только на параметры."
+    def structured_model(self, schema: type[BaseModel]) -> Runnable:
+        """Chat-модель, которая возвращает объект ``schema`` вместо текста."""
+        return self.build_chat_model().with_structured_output(
+            schema, **self.structured_output_kwargs
         )
 
 
 class OpenAIProvider(LLMProvider):
     """OpenAI GPT провайдер."""
+
+    name = "openai"
 
     def __init__(self):
         self.api_key = get_runtime_llm_setting("OPENAI_API_KEY", "")
@@ -93,122 +60,48 @@ class OpenAIProvider(LLMProvider):
     def is_available(self) -> bool:
         return bool(self.api_key)
 
-    def generate_review(
-        self,
-        features: dict[str, Any],
-        *,
-        rag_context: str = "",
-    ) -> dict[str, Any]:
-        """Генерирует обзор через OpenAI API."""
-        if not self.is_available():
-            raise ValueError("OPENAI_API_KEY не установлен")
+    def build_chat_model(self) -> BaseChatModel:
+        from langchain_openai import ChatOpenAI
 
-        try:
-            from openai import OpenAI
-
-            client = OpenAI(api_key=self.api_key)
-            response = client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Ты музыкальный критик. Отвечай только валидным JSON "
-                            "на русском языке."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": self._build_prompt(features, rag_context=rag_context),
-                    },
-                ],
-                temperature=LLM_TEMPERATURE,
-                max_tokens=LLM_MAX_TOKENS,
-                response_format={"type": "json_object"},
-            )
-            content = response.choices[0].message.content
-            if not content:
-                raise ValueError("Пустой ответ от OpenAI")
-
-            parsed = json.loads(content)
-            parsed["source"] = "openai"
-            parsed["language"] = "ru"
-            parsed["model"] = self.model
-
-            if "full_text" not in parsed and "sections" in parsed:
-                parsed["full_text"] = "\n\n".join(
-                    str(v) for v in parsed["sections"].values()
-                )
-
-            return parsed
-
-        except Exception as exc:
-            logger.error("OpenAI ошибка: %s", exc)
-            raise
+        return ChatOpenAI(
+            model=self.model,
+            api_key=self.api_key,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS,
+        )
 
 
 class ClaudeProvider(LLMProvider):
     """Anthropic Claude провайдер."""
 
+    name = "claude"
+    # Родной структурированный вывод Anthropic вместо принудительного вызова
+    # инструмента (function_calling), который конфликтует с мышлением модели.
+    structured_output_kwargs = {"method": "json_schema"}
+
     def __init__(self):
         self.api_key = get_runtime_llm_setting("ANTHROPIC_API_KEY", "")
-        self.model = get_runtime_llm_setting("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
+        self.model = get_runtime_llm_setting("CLAUDE_MODEL", DEFAULT_CLAUDE_MODEL)
 
     def is_available(self) -> bool:
         return bool(self.api_key)
 
-    def generate_review(
-        self,
-        features: dict[str, Any],
-        *,
-        rag_context: str = "",
-    ) -> dict[str, Any]:
-        """Генерирует обзор через Anthropic Claude API."""
-        if not self.is_available():
-            raise ValueError("ANTHROPIC_API_KEY не установлен")
+    def build_chat_model(self) -> BaseChatModel:
+        from langchain_anthropic import ChatAnthropic
 
-        try:
-            import anthropic
-
-            client = anthropic.Anthropic(api_key=self.api_key)
-            message = client.messages.create(
-                model=self.model,
-                max_tokens=LLM_MAX_TOKENS,
-                system=(
-                    "Ты музыкальный критик. Отвечай только валидным JSON "
-                    "на русском языке."
-                ),
-                messages=[
-                    {
-                        "role": "user",
-                        "content": self._build_prompt(features, rag_context=rag_context),
-                    },
-                ],
-            )
-
-            content = message.content[0].text
-            if not content:
-                raise ValueError("Пустой ответ от Claude")
-
-            parsed = json.loads(content)
-            parsed["source"] = "claude"
-            parsed["language"] = "ru"
-            parsed["model"] = self.model
-
-            if "full_text" not in parsed and "sections" in parsed:
-                parsed["full_text"] = "\n\n".join(
-                    str(v) for v in parsed["sections"].values()
-                )
-
-            return parsed
-
-        except Exception as exc:
-            logger.error("Claude ошибка: %s", exc)
-            raise
+        # temperature намеренно не передаём: актуальные модели Claude (Sonnet 5,
+        # Opus 5) отклоняют sampling-параметры ошибкой 400.
+        return ChatAnthropic(
+            model=self.model,
+            api_key=self.api_key,
+            max_tokens=LLM_MAX_TOKENS,
+        )
 
 
 class OllamaProvider(LLMProvider):
     """Ollama локальный провайдер (поддержка Mistral, LLaMA и др.)."""
+
+    name = "ollama"
 
     def __init__(self):
         self.base_url = get_runtime_llm_setting("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -223,154 +116,43 @@ class OllamaProvider(LLMProvider):
         except Exception:
             return False
 
-    def generate_review(
-        self,
-        features: dict[str, Any],
-        *,
-        rag_context: str = "",
-    ) -> dict[str, Any]:
-        """Генерирует обзор через локальный Ollama."""
-        if not self.is_available():
-            raise ValueError(
-                f"Ollama недоступна на {self.base_url}. "
-                "Убедитесь, что Ollama запущена локально."
-            )
+    def build_chat_model(self) -> BaseChatModel:
+        from langchain_ollama import ChatOllama
 
-        try:
-            import requests
-
-            prompt = self._build_prompt(features, rag_context=rag_context)
-            payload = {
-                "model": self.model,
-                "prompt": prompt,
-                "stream": False,
-                "format": "json",
-            }
-
-            response = requests.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=120,
-            )
-            response.raise_for_status()
-
-            result = response.json()
-            content = result.get("response", "")
-
-            if not content:
-                raise ValueError("Пустой ответ от Ollama")
-
-            # Пытаемся распарсить JSON из ответа
-            try:
-                parsed = json.loads(content)
-            except json.JSONDecodeError:
-                # Если не JSON, оборачиваем в базовую структуру
-                logger.warning("Ollama вернула не-JSON ответ, оборачиваем в структуру")
-                parsed = {
-                    "score": 7,
-                    "sections": {
-                        "summary": "Анализ трека на основе параметров.",
-                        "rhythm": content[:500],
-                        "tonality": "Информация о тональности.",
-                        "production": "Информация о продакшене.",
-                        "verdict": "Обзор завершён.",
-                    },
-                }
-
-            parsed["source"] = "ollama"
-            parsed["language"] = "ru"
-            parsed["model"] = self.model
-
-            if "full_text" not in parsed and "sections" in parsed:
-                parsed["full_text"] = "\n\n".join(
-                    str(v) for v in parsed["sections"].values()
-                )
-
-            return parsed
-
-        except Exception as exc:
-            logger.error("Ollama ошибка: %s", exc)
-            raise
+        return ChatOllama(
+            model=self.model,
+            base_url=self.base_url,
+            temperature=LLM_TEMPERATURE,
+            num_predict=LLM_MAX_TOKENS,
+        )
 
 
 class NemotronProvider(LLMProvider):
     """NVIDIA Nemotron API провайдер."""
 
+    name = "nemotron"
+
     def __init__(self):
         self.api_key = get_runtime_llm_setting("NEMOTRON_API_KEY", "")
         self.model = get_runtime_llm_setting("NEMOTRON_MODEL", "meta/llama-2-70b-chat")
-        self.base_url = get_runtime_llm_setting("NEMOTRON_BASE_URL", "https://integrate.api.nvidia.com/v1")
+        self.base_url = get_runtime_llm_setting(
+            "NEMOTRON_BASE_URL", "https://integrate.api.nvidia.com/v1"
+        )
 
     def is_available(self) -> bool:
         return bool(self.api_key)
 
-    def generate_review(
-        self,
-        features: dict[str, Any],
-        *,
-        rag_context: str = "",
-    ) -> dict[str, Any]:
-        """Генерирует обзор через NVIDIA Nemotron API."""
-        if not self.is_available():
-            raise ValueError("NEMOTRON_API_KEY не установлен")
+    def build_chat_model(self) -> BaseChatModel:
+        # NVIDIA API совместим с форматом OpenAI, отличается только base_url.
+        from langchain_openai import ChatOpenAI
 
-        try:
-            import requests
-
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Accept": "application/json",
-            }
-
-            payload = {
-                "model": self.model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Ты музыкальный критик. Отвечай только валидным JSON "
-                            "на русском языке."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": self._build_prompt(features, rag_context=rag_context),
-                    },
-                ],
-                "temperature": LLM_TEMPERATURE,
-                "max_tokens": LLM_MAX_TOKENS,
-                "top_p": 1,
-            }
-
-            response = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=60,
-            )
-            response.raise_for_status()
-
-            result = response.json()
-            content = result["choices"][0]["message"]["content"]
-
-            if not content:
-                raise ValueError("Пустой ответ от Nemotron")
-
-            parsed = json.loads(content)
-            parsed["source"] = "nemotron"
-            parsed["language"] = "ru"
-            parsed["model"] = self.model
-
-            if "full_text" not in parsed and "sections" in parsed:
-                parsed["full_text"] = "\n\n".join(
-                    str(v) for v in parsed["sections"].values()
-                )
-
-            return parsed
-
-        except Exception as exc:
-            logger.error("Nemotron ошибка: %s", exc)
-            raise
+        return ChatOpenAI(
+            model=self.model,
+            api_key=self.api_key,
+            base_url=self.base_url,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS,
+        )
 
 
 class LLMProviderFactory:
@@ -398,8 +180,6 @@ class LLMProviderFactory:
         Raises:
             ValueError: Если провайдер не найден или недоступен
         """
-        from app.config import get_runtime_llm_setting
-
         name = (provider_name or get_runtime_llm_setting("LLM_PROVIDER", "openai")).lower()
 
         if name not in cls._providers:
@@ -424,3 +204,13 @@ class LLMProviderFactory:
             provider = provider_class()
             result[name] = provider.is_available()
         return result
+
+
+def get_chat_model() -> BaseChatModel:
+    """Chat-модель для провайдера из текущих runtime-настроек."""
+    return LLMProviderFactory.get_provider().build_chat_model()
+
+
+def get_structured_model(schema: type[BaseModel]) -> Runnable:
+    """Модель провайдера из настроек, возвращающая объект ``schema``."""
+    return LLMProviderFactory.get_provider().structured_model(schema)

@@ -1,42 +1,44 @@
-"""Небольшой адаптер нового пайплайна к существующим LLM-провайдерам."""
+"""Вызовы LLM для агентов Growth Copilot: LangChain-цепочки с логированием ошибок."""
 
 from __future__ import annotations
 
-import json
-from typing import Any
+import logging
+from typing import Any, TypeVar
 
-from app.llm_providers import LLMProviderFactory
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel
 
-GROWTH_COPILOT_SYSTEM_PROMPT = (
-    "Ты — ассистент по продвижению независимых музыкальных артистов. "
-    "Следуй инструкциям в промпте пользователя, включая требуемый формат ответа. "
-    "Если тебя просят ответить JSON — верни только валидный JSON без markdown-ограждений "
-    "и без лишнего текста до или после него."
-)
+from app.llm_providers import get_chat_model, get_structured_model
+
+logger = logging.getLogger(__name__)
+
+SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
 
-def ask_llm(prompt: str) -> str:
-    """Возвращает сырой текст ответа LLM-провайдера или пустую строку."""
+def invoke_structured(
+    prompt: ChatPromptTemplate,
+    schema: type[SchemaT],
+    variables: dict[str, Any],
+) -> SchemaT | None:
+    """Вызывает LLM и возвращает ответ, разобранный в объект ``schema``.
+
+    При любой ошибке (нет ключа, сеть, невалидный ответ) пишет предупреждение
+    в лог и возвращает None — агент сам решает, какое значение подставить.
+    """
     try:
-        provider = LLMProviderFactory.get_provider()
-        return provider.complete(prompt, system_prompt=GROWTH_COPILOT_SYSTEM_PROMPT)
+        chain = prompt | get_structured_model(schema)
+        return chain.invoke(variables)
     except Exception:
-        return ""
+        logger.warning("Структурированный вызов LLM не удался (%s)", schema.__name__, exc_info=True)
+        return None
 
 
-def parse_json_response(text: str, default: Any) -> Any:
-    """Извлекает JSON даже если провайдер добавил markdown-ограждение."""
-    if not text:
-        return default
-    candidate = text.strip().removeprefix("```json").removesuffix("```").strip()
+def invoke_text(prompt: ChatPromptTemplate, variables: dict[str, Any]) -> str:
+    """Вызывает LLM и возвращает обычный текст или пустую строку при ошибке."""
     try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        start = min((i for i in (candidate.find("{"), candidate.find("[")) if i >= 0), default=-1)
-        end = max(candidate.rfind("}"), candidate.rfind("]"))
-        if start >= 0 and end > start:
-            try:
-                return json.loads(candidate[start : end + 1])
-            except json.JSONDecodeError:
-                pass
-    return default
+        chain = prompt | get_chat_model() | StrOutputParser()
+        return chain.invoke(variables)
+    except Exception:
+        logger.warning("Текстовый вызов LLM не удался", exc_info=True)
+        return ""

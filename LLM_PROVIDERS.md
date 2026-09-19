@@ -35,6 +35,9 @@ OPENAI_API_KEY=sk-your-api-key-here
 OPENAI_MODEL=gpt-4o-mini  # или gpt-4, gpt-4-turbo и т.д.
 ```
 
+> **Примечание:** для Claude параметр `LLM_TEMPERATURE` не применяется — актуальные модели
+> (Sonnet 5, Opus 5) отклоняют sampling-параметры ошибкой 400.
+
 **Установка:**
 ```bash
 pip install openai>=1.55.0
@@ -52,7 +55,7 @@ pip install openai>=1.55.0
 ```env
 LLM_PROVIDER=claude
 ANTHROPIC_API_KEY=sk-ant-your-api-key-here
-CLAUDE_MODEL=claude-3-5-sonnet-20241022  # или claude-3-opus-20240229
+CLAUDE_MODEL=claude-sonnet-5  # или claude-opus-5 (мощнее), claude-haiku-4-5 (дешевле)
 ```
 
 **Установка:**
@@ -202,7 +205,7 @@ LLM_MAX_TOKENS=2000
 ```env
 LLM_PROVIDER=claude
 ANTHROPIC_API_KEY=sk-ant-xxxxxxx
-CLAUDE_MODEL=claude-3-5-sonnet-20241022
+CLAUDE_MODEL=claude-sonnet-5
 LLM_TEMPERATURE=0.7
 LLM_MAX_TOKENS=2000
 ```

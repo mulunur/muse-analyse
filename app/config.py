@@ -69,8 +69,11 @@ OPENAI_API_KEY = get_runtime_llm_setting("OPENAI_API_KEY", "")
 OPENAI_MODEL = get_runtime_llm_setting("OPENAI_MODEL", "gpt-4o-mini")
 
 # Anthropic Claude Configuration
+# claude-sonnet-5 — актуальное поколение Sonnet ($2/$10 за 1M токенов); альтернативы:
+# claude-opus-5 (мощнее, $5/$25) и claude-haiku-4-5 (дешевле, $1/$5).
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-5"
 ANTHROPIC_API_KEY = get_runtime_llm_setting("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL = get_runtime_llm_setting("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
+CLAUDE_MODEL = get_runtime_llm_setting("CLAUDE_MODEL", DEFAULT_CLAUDE_MODEL)
 
 # Ollama Configuration (локальный запуск)
 OLLAMA_BASE_URL = get_runtime_llm_setting("OLLAMA_BASE_URL", "http://localhost:11434")

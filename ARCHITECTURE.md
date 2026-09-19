@@ -123,7 +123,10 @@ LLMProviderFactory
 
 Каждый провайдер:
 - Реализует `is_available()` — проверка наличия ключей/доступности
-- Реализует `generate_review()` — отправляет API запрос и парсит JSON
+- Реализует `build_chat_model()` — создаёт LangChain chat-модель (`ChatOpenAI`, `ChatAnthropic`, `ChatOllama`)
+- Наследует `structured_model(schema)` — модель, возвращающая объект Pydantic вместо текста
+
+Сам вызов API, разбор ответа и валидацию схемы выполняет LangChain (`with_structured_output`).
 
 #### `review_generator.py` — Генерация обзоров
 
@@ -131,8 +134,8 @@ LLMProviderFactory
 
 ```
 1. Попытка получить провайдер через LLMProviderFactory
-2. Если успешно → вызов provider.generate_review()
-3. Если ошибка → fallback на _build_template_review()
+2. Если успешно → цепочка `ChatPromptTemplate | provider.structured_model(TrackReview)`
+3. Если провайдера нет или вызов не удался → fallback на _build_template_review()
 4. Всегда возвращает структурированный обзор
 ```
 
@@ -210,10 +213,10 @@ LLM_PROVIDER = "openai"  # можно изменить на claude, ollama, nemo
 def generate_review(features):
     try:
         provider = LLMProviderFactory.get_provider()  # читает LLM_PROVIDER
-        return provider.generate_review(features)
     except ValueError:
         # Провайдер недоступен или ключи не установлены
         return _build_template_review(features)
+    # ... LLM-цепочка; при ошибке — шаблон с полем llm_error
 ```
 
 ## Расширение архитектуры
@@ -223,12 +226,18 @@ def generate_review(features):
 1. **Создать класс в `llm_providers.py`:**
 ```python
 class MyLLMProvider(LLMProvider):
+    name = "my_llm"
+
+    def __init__(self):
+        self.api_key = get_runtime_llm_setting("MY_API_KEY", "")
+        self.model = get_runtime_llm_setting("MY_MODEL", "default-model")
+
     def is_available(self) -> bool:
-        return bool(os.getenv("MY_API_KEY"))
-    
-    def generate_review(self, features):
-        # Реализация вызова API
-        pass
+        return bool(self.api_key)
+
+    def build_chat_model(self):
+        from langchain_openai import ChatOpenAI  # или любой другой LangChain-класс
+        return ChatOpenAI(model=self.model, api_key=self.api_key, base_url="https://...")
 ```
 
 2. **Зарегистрировать в фабрике:**
@@ -263,7 +272,7 @@ result = analyze_audio(path)
 result["new_feature"] = _new_feature(audio)
 ```
 
-2. **Обновить промпт в `llm_providers.py`** для учёта нового признака
+2. **Обновить `_compact_features` и промпт в `review_generator.py`** для учёта нового признака
 
 ---
 

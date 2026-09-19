@@ -2,10 +2,24 @@
 
 from __future__ import annotations
 
-from typing import Any
+from langchain_core.prompts import ChatPromptTemplate
 
-from app.agents.llm import ask_llm, parse_json_response
+from app.agents.llm import invoke_structured
 from app.agents.state import GrowthState, TrendContext
+
+_NO_DATA_SUMMARY = "Рыночные данные пока недоступны."
+
+_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "Ты собираешь практический рыночный контекст для независимого артиста: активные плейлисты и форматы контента. "
+            "Это НЕ должно влиять на тон или художественный голос артиста, только на логистику: куда и в каком формате питчить. "
+            "Опирайся только на переданные результаты поиска, ничего не выдумывай.",
+        ),
+        ("human", "Результаты поиска:\n{search_results}"),
+    ]
+)
 
 
 def _genre_hint(state: GrowthState) -> str:
@@ -40,15 +54,21 @@ def trend_agent(state: GrowthState) -> dict[str, TrendContext]:
     except (ImportError, KeyError, OSError):
         pass
 
-    prompt = (
-        "Ты собираешь практический рыночный контекст для независимого артиста: активные плейлисты и форматы контента. "
-        "Это НЕ должно влиять на тон или художественный голос артиста, только на логистику: куда и в каком формате питчить. "
-        "Верни JSON с полями active_playlists, genre_context_summary, source_urls.\n" + "\n".join(search_texts)
+    # Без результатов поиска модели не на что опереться — она бы выдумала плейлисты.
+    parsed = (
+        invoke_structured(_PROMPT, TrendContext, {"search_results": "\n".join(search_texts)})
+        if search_texts
+        else None
     )
-    parsed: Any = parse_json_response(ask_llm(prompt), {})
+    if parsed is None:
+        parsed = TrendContext(
+            active_playlists=[],
+            genre_context_summary=_NO_DATA_SUMMARY,
+            source_urls=[],
+        )
     context = TrendContext(
-        active_playlists=[str(item) for item in parsed.get("active_playlists", [])] if isinstance(parsed, dict) else [],
-        genre_context_summary=str(parsed.get("genre_context_summary", "Рыночные данные пока недоступны.")) if isinstance(parsed, dict) else "Рыночные данные пока недоступны.",
-        source_urls=list(dict.fromkeys(urls + ([str(item) for item in parsed.get("source_urls", [])] if isinstance(parsed, dict) else []))),
+        active_playlists=parsed.active_playlists,
+        genre_context_summary=parsed.genre_context_summary,
+        source_urls=list(dict.fromkeys(urls + parsed.source_urls)),
     )
     return {"trend_context": context}

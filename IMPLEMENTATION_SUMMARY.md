@@ -6,7 +6,7 @@
 ```
 LLMProvider (ABC)
 ├── OpenAIProvider (gpt-4o-mini, gpt-4)
-├── ClaudeProvider (claude-3-5-sonnet)  
+├── ClaudeProvider (claude-sonnet-5)  
 ├── OllamaProvider (mistral, llama2 local)
 └── NemotronProvider (meta/llama-2-70b-chat)
 
@@ -51,7 +51,7 @@ POST /api/analyze                     # Анализ (использует фа�
 | `QUICKSTART.md` | 5-минутный старт |
 | `CHANGELOG.md` | Список всех изменений |
 | `examples_test_providers.py` | Примеры использования |
-| `tests_test_llm_providers.py` | Unit тесты |
+| `tests/test_llm_providers.py` | Unit тесты |
 
 ## 📝 Изменённые файлы
 
@@ -147,12 +147,15 @@ Essentia анализ:         45-120 сек (не изменилось)
 ```python
 # 1. Создать класс в llm_providers.py
 class MyProviderProvider(LLMProvider):
+    name = "myprovider"
+
     def is_available(self):
         return bool(os.getenv("MY_API_KEY"))
-    
-    def generate_review(self, features):
-        # Вызов API и парсинг
-        return {"source": "myprovider", ...}
+
+    def build_chat_model(self):
+        # Вернуть LangChain chat-модель; вызов API и парсинг сделает LangChain
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(model="...", api_key=os.getenv("MY_API_KEY"), base_url="...")
 
 # 2. Зарегистрировать в фабрике
 LLMProviderFactory._providers["myprovider"] = MyProviderProvider
@@ -173,7 +176,7 @@ LLMProviderFactory._providers["myprovider"] = MyProviderProvider
 
 ```bash
 # Запустить тесты
-pytest tests_test_llm_providers.py -v
+pytest tests/test_llm_providers.py -v
 
 # Проверить конфиг
 curl http://localhost:8000/api/health | jq

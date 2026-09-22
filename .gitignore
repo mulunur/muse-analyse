@@ -44,5 +44,8 @@ tmp/
 # RAG index (пересоздаётся скриптом index_knowledge.py)
 data/rag_index/
 
+# Состояние Growth Copilot (SQLite-чекпойнтер LangGraph)
+data/growth/
+
 # Logs
 *.log

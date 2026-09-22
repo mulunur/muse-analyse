@@ -117,3 +117,22 @@ RAG_CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "150"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
 RAG_INDEX_DIR.mkdir(parents=True, exist_ok=True)
+
+# Очередь задач Celery. Обычный Redis (без RediSearch/Redis Stack) — он тут
+# нужен только как брокер и хранилище результатов, для этого хватает "из коробки".
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
+# Сколько хранить результат задачи в Redis после завершения, пока фронтенд не забрал.
+CELERY_RESULT_EXPIRES_SECONDS = int(os.getenv("CELERY_RESULT_EXPIRES_SECONDS", "3600"))
+
+# Состояние графа Growth Copilot между /api/growth/start и /api/growth/select —
+# эти запросы могут обрабатываться разными Celery-воркерами, поэтому состояние
+# не может жить только в памяти одного процесса. Файл SQLite на общем томе
+# (см. docker-compose.yml) — самый лёгкий вариант, который решает эту задачу;
+# RedisSaver для LangGraph отпал, потому что требует Redis Stack (RediSearch),
+# а не обычный Redis, который используется здесь для очереди.
+GROWTH_CHECKPOINT_DB_PATH = Path(
+    os.getenv("GROWTH_CHECKPOINT_DB_PATH", str(BASE_DIR / "data" / "growth" / "checkpoints.sqlite3"))
+)
+GROWTH_CHECKPOINT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)

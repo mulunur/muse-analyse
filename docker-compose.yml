@@ -1,4 +1,13 @@
 services:
+  redis:
+    image: redis:7-alpine
+    # Только очередь Celery: брокер + result backend. Не хранилище состояния
+    # Growth Copilot (для этого используется SQLite на общем томе growth_state) —
+    # обычный Redis не поддерживает RediSearch, который для этого нужен бы был.
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
   muse-analyse:
     platform: linux/amd64
     build:
@@ -14,13 +23,48 @@ services:
       RAG_ENABLED: "false"
       RAG_INDEX_DIR: /app/data/rag_index
       KNOWLEDGE_DIR: /app/data/knowledge
+      GROWTH_CHECKPOINT_DB_PATH: /app/data/growth/checkpoints.sqlite3
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     ports:
       - "${MUSE_PORT:-8000}:8000"
     volumes:
       - rag_index:/app/data/rag_index
+      - growth_state:/app/data/growth
+      - uploads:/app/uploads
       - ./data/knowledge:/app/data/knowledge:ro
-    tmpfs:
-      - /app/uploads:size=128m
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  worker:
+    platform: linux/amd64
+    build:
+      context: .
+      target: runtime
+    image: muse-analyse:local
+    command: celery -A app.tasks worker --loglevel=info --concurrency=2
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RAG_ENABLED: "false"
+      RAG_INDEX_DIR: /app/data/rag_index
+      KNOWLEDGE_DIR: /app/data/knowledge
+      GROWTH_CHECKPOINT_DB_PATH: /app/data/growth/checkpoints.sqlite3
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    volumes:
+      - rag_index:/app/data/rag_index
+      - growth_state:/app/data/growth
+      # Тот же том с загрузками, что и у muse-analyse — задачу ставит один
+      # контейнер, выполняет другой, файл должен быть виден обоим.
+      - uploads:/app/uploads
+      - ./data/knowledge:/app/data/knowledge:ro
+    depends_on:
+      - redis
     restart: unless-stopped
 
   muse-analyse-rag:
@@ -39,14 +83,59 @@ services:
       RAG_ENABLED: "true"
       RAG_INDEX_DIR: /app/data/rag_index
       KNOWLEDGE_DIR: /app/data/knowledge
+      GROWTH_CHECKPOINT_DB_PATH: /app/data/growth/checkpoints.sqlite3
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     ports:
       - "${MUSE_PORT:-8000}:8000"
     volumes:
       - rag_index:/app/data/rag_index
+      - growth_state:/app/data/growth
+      - uploads:/app/uploads
       - ./data/knowledge:/app/data/knowledge:ro
-    tmpfs:
-      - /app/uploads:size=128m
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  worker-rag:
+    profiles: ["rag"]
+    platform: linux/amd64
+    build:
+      context: .
+      target: rag
+    image: muse-analyse:rag
+    command: celery -A app.tasks worker --loglevel=info --concurrency=2
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RAG_ENABLED: "true"
+      RAG_INDEX_DIR: /app/data/rag_index
+      KNOWLEDGE_DIR: /app/data/knowledge
+      GROWTH_CHECKPOINT_DB_PATH: /app/data/growth/checkpoints.sqlite3
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    volumes:
+      - rag_index:/app/data/rag_index
+      - growth_state:/app/data/growth
+      - uploads:/app/uploads
+      - ./data/knowledge:/app/data/knowledge:ro
+    depends_on:
+      - redis
     restart: unless-stopped
 
 volumes:
   rag_index:
+  redis_data:
+  growth_state:
+  # Раньше был tmpfs на одном контейнере — теперь именованный том с tmpfs-драйвером:
+  # файлы так же не пишутся на диск и живут только пока запущен docker compose,
+  # но при этом видны и веб-процессу, и воркеру, который их обрабатывает.
+  uploads:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=128m"

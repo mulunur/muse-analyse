@@ -13,12 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
-from app.audio_analysis import (
-    ESSENTIA_AVAILABLE,
-    ESSENTIA_ERROR,
-    AudioAnalysisError,
-    analyze_audio,
-)
+from app.audio_analysis import ESSENTIA_AVAILABLE, ESSENTIA_ERROR
 from app.config import (
     MAX_UPLOAD_SIZE_BYTES,
     SUPPORTED_EXTENSIONS,
@@ -30,13 +25,11 @@ from app.config import (
 )
 from app.llm_providers import LLMProviderFactory
 from app.rag.knowledge import get_knowledge_base
-from app.review_generator import generate_review
+from app.tasks import analyze_track_task, celery_app, growth_select_task, growth_start_task
 
 try:
-    from langgraph.types import Command
     from app.agents.graph import growth_graph
 except ImportError:
-    Command = None  # type: ignore[assignment,misc]
     growth_graph = None
 
 logging.basicConfig(level=logging.INFO)
@@ -167,7 +160,12 @@ async def rag_reindex(force: bool = True):
 
 @app.post("/api/analyze")
 async def analyze(file: UploadFile = File(...)):
-    """Загрузка аудио, анализ Essentia и генерация обзора."""
+    """Загружает аудио и ставит анализ в очередь Celery.
+
+    Essentia-анализ и генерация обзора могут занимать десятки секунд — раньше
+    это блокировало весь сервер на всё это время. Теперь запрос сразу
+    возвращает task_id, а результат забирается через /api/tasks/{task_id}.
+    """
     if not ESSENTIA_AVAILABLE:
         raise HTTPException(
             status_code=503,
@@ -203,30 +201,39 @@ async def analyze(file: UploadFile = File(...)):
         )
 
     safe_name = f"{uuid.uuid4().hex}{suffix}"
-    file_path: Path | None = UPLOAD_DIR / safe_name
+    file_path = UPLOAD_DIR / safe_name
 
     try:
         async with aiofiles.open(file_path, "wb") as f:
             await f.write(content)
-
-        features = analyze_audio(file_path)
-        review = generate_review(features)
-
-        return {
-            "success": True,
-            "filename": file.filename,
-            "features": features,
-            "review": review,
-        }
-
-    except AudioAnalysisError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Неожиданная ошибка анализа")
+        file_path.unlink(missing_ok=True)
+        logger.exception("Не удалось сохранить загруженный файл")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {exc}") from exc
-    finally:
-        if file_path and file_path.exists():
-            file_path.unlink(missing_ok=True)
+
+    # Файл на общем томе uploads — worker в отдельном контейнере, но видит тот же путь.
+    task = analyze_track_task.delay(str(file_path), file.filename)
+    return {"task_id": task.id}
+
+
+@app.get("/api/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    """Статус и результат фоновой задачи (анализ трека или шаг Growth Copilot)."""
+    result = celery_app.AsyncResult(task_id)
+
+    if not result.ready():
+        return {"status": "pending"}
+
+    if result.failed():
+        # Задача упала сама, а не сообщила о доменной ошибке своим возвращаемым
+        # значением — это баг в коде задачи или сбой на уровне Celery/Redis.
+        return {"status": "error", "error": str(result.result)}
+
+    payload = result.result
+    if isinstance(payload, dict) and payload.get("success") is False:
+        return {"status": "error", "error": payload.get("error", "Неизвестная ошибка")}
+
+    return {"status": "done", "result": payload}
 
 
 @app.post("/api/growth/start")
@@ -234,7 +241,7 @@ async def growth_start(
     file: UploadFile = File(...),
     artist_materials: list[str] = Form(default=[]),
 ):
-    """Запускает Growth Copilot до выбора карточек артистом."""
+    """Ставит в очередь запуск Growth Copilot до выбора карточек артистом."""
     if growth_graph is None:
         raise HTTPException(status_code=503, detail="Growth Copilot недоступен: установите langgraph")
     if not file.filename or Path(file.filename).suffix.lower() not in SUPPORTED_EXTENSIONS:
@@ -244,43 +251,26 @@ async def growth_start(
         raise HTTPException(status_code=413, detail="Пустой файл или превышен лимит размера")
     suffix = Path(file.filename).suffix.lower()
     file_path = UPLOAD_DIR / f"{uuid.uuid4().hex}{suffix}"
-    async with aiofiles.open(file_path, "wb") as target:
-        await target.write(content)
-    thread_id = uuid.uuid4().hex
-    config = {"configurable": {"thread_id": thread_id}}
     try:
-        growth_graph.invoke(
-            {"audio_path": str(file_path), "artist_materials": artist_materials},
-            config,
-        )
-        snapshot = growth_graph.get_state(config)
-        return {"thread_id": thread_id, "content_ideas": snapshot.values.get("content_ideas", [])}
+        async with aiofiles.open(file_path, "wb") as target:
+            await target.write(content)
     except Exception as exc:
         file_path.unlink(missing_ok=True)
-        logger.exception("Ошибка запуска Growth Copilot")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Не удалось сохранить загруженный файл")
+        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {exc}") from exc
+
+    thread_id = uuid.uuid4().hex
+    task = growth_start_task.delay(str(file_path), artist_materials, thread_id)
+    return {"task_id": task.id, "thread_id": thread_id}
 
 
 @app.post("/api/growth/select")
 async def growth_select(selection: GrowthSelection):
-    """Возобновляет граф с выбранными карточками и возвращает черновики."""
-    if growth_graph is None or Command is None:
+    """Ставит в очередь возобновление графа с выбранными карточками."""
+    if growth_graph is None:
         raise HTTPException(status_code=503, detail="Growth Copilot недоступен")
-    config = {"configurable": {"thread_id": selection.thread_id}}
-    try:
-        result = growth_graph.invoke(
-            Command(resume={"selected_idea_ids": selection.selected_idea_ids}),
-            config,
-        )
-        snapshot = growth_graph.get_state(config)
-        return {"drafts": result.get("drafts", snapshot.values.get("drafts", {}))}
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    finally:
-        snapshot = growth_graph.get_state(config)
-        audio_path = snapshot.values.get("audio_path") if snapshot else None
-        if audio_path:
-            Path(audio_path).unlink(missing_ok=True)
+    task = growth_select_task.delay(selection.thread_id, selection.selected_idea_ids)
+    return {"task_id": task.id}
 
 
 @app.get("/api/growth/status/{thread_id}")

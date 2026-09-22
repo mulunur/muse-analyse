@@ -71,11 +71,15 @@ docker compose up --build
 
 Открыть: **http://localhost:8000**
 
-Этот вариант запускает базовый `linux/amd64`-образ с готовой Linux wheel Essentia TensorFlow, но без тяжёлых RAG-зависимостей. Чтобы включить RAG, остановите базовый сервис и запустите профиль:
+Кроме самого приложения это поднимает `redis` (очередь задач) и `worker`
+(отдельный процесс, который выполняет анализ и Growth Copilot — без него
+задачи будут ставиться в очередь, но никогда не завершатся).
+
+Этот вариант запускает базовый `linux/amd64`-образ с готовой Linux wheel Essentia TensorFlow, но без тяжёлых RAG-зависимостей. Чтобы включить RAG, остановите базовый сервис и запустите профиль (с воркером — `worker-rag`, а не `worker`):
 
 ```bash
 docker compose down
-docker compose --profile rag up --build muse-analyse-rag
+docker compose --profile rag up --build muse-analyse-rag worker-rag
 ```
 
 После добавления PDF в `data/knowledge/` постройте RAG-индекс в отдельном профиле:
@@ -142,16 +146,19 @@ cp .env.example .env
 
 #### Запуск
 
+Анализ и Growth Copilot выполняются в отдельном процессе-воркере — без него
+запросы будут ставиться в очередь и никогда не завершатся. Нужны Redis
+(`brew install redis && redis-server` на macOS, либо `docker run -p 6379:6379 redis:7-alpine`)
+и два процесса — сервер и воркер:
+
 ```bash
-# Запуск (быстрое, рекомендованное)
-python run.py
-
-# Или запускайте напрямую uvicorn (без авто‑перезагрузки в продакшн):
-/path/to/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
-
-# Если вы используете виртуальное окружение в проекте:
 source .venv/bin/activate
+
+# Терминал 1: сервер
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
+
+# Терминал 2: воркер
+celery -A app.tasks worker --loglevel=info
 ```
 
 Открыть: **http://localhost:8000**
@@ -236,11 +243,31 @@ python scripts/index_knowledge.py --force
 
 ### `POST /api/analyze`
 
-Загрузка аудиофайла и получение анализа + обзора.
+Загружает аудиофайл и ставит анализ в очередь (Celery) — Essentia-анализ и
+генерация обзора могут занимать десятки секунд и выполняются в отдельном
+воркер-процессе, а не внутри самого запроса.
 
 **Запрос:**
 ```bash
 curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze
+```
+
+**Ответ (сразу):**
+```json
+{"task_id": "d8805c13-27b5-4be0-83f6-35996314c93a"}
+```
+
+### `GET /api/tasks/{task_id}`
+
+Статус и результат фоновой задачи — опрашивайте, пока `status` не станет
+`done` или `error`.
+
+```bash
+curl http://localhost:8000/api/tasks/d8805c13-27b5-4be0-83f6-35996314c93a
+```
+
+```json
+{"status": "pending"}
 ```
 
 ### Запуск MCP-инструмента (локально, пример)
@@ -263,29 +290,36 @@ python -c "from mcp_server import analyze_audio; print(analyze_audio('/absolute/
 python mcp_server.py
 ```
 
-**Ответ:**
+**Ответ (когда готово, `status: "done"`):**
 
 ```json
 {
-  "success": true,
-  "filename": "track.mp3",
-  "features": { ... },
-  "review": {
-    "source": "openai",
-    "model": "gpt-4o-mini",
-    "language": "ru",
-    "score": 7.5,
-    "sections": {
-      "summary": "...",
-      "rhythm": "...",
-      "tonality": "...",
-      "production": "...",
-      "verdict": "..."
-    },
-    "full_text": "..."
+  "status": "done",
+  "result": {
+    "success": true,
+    "filename": "track.mp3",
+    "features": { ... },
+    "review": {
+      "source": "openai",
+      "model": "gpt-4o-mini",
+      "language": "ru",
+      "score": 7.5,
+      "sections": {
+        "summary": "...",
+        "rhythm": "...",
+        "tonality": "...",
+        "production": "...",
+        "verdict": "..."
+      },
+      "full_text": "..."
+    }
   }
 }
 ```
+
+Growth Copilot (`POST /api/growth/start`, `POST /api/growth/select`) устроен
+так же: запрос сразу возвращает `task_id`, результат — через тот же
+`GET /api/tasks/{task_id}`.
 
 ---
 
@@ -295,7 +329,7 @@ python mcp_server.py
 |-----------|----------|
 | **Ритм** | BPM, уверенность бита, количество ударов, onset rate, beat loudness |
 | **Тональность** | Тоника, лад (мажор/минор), сила тональности, строй (Гц), аккорды |
-| **Динамика** | LUFS (EBU R128), громкость (dB), динамическая сложность, RMS, replay gain |
+| **Динамика** | LUFS (EBU R128), громкость по Стивенсу (не дБ), динамическая сложность, RMS, replay gain |
 | **Спектр** | Спектральный центроид, яркость, rolloff, flux, zero-crossing rate, MFCC |
 | **Прочее** | Танцевальность (Danceability), энергия (композитная оценка 0–1) |
 

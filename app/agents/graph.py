@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 try:
-    from langgraph.checkpoint.memory import MemorySaver
     from langgraph.graph import END, START, StateGraph
     from langgraph.types import Command, interrupt
 except ImportError:  # Доступность проверяется при установке requirements.txt.
-    MemorySaver = None  # type: ignore[assignment,misc]
     StateGraph = None  # type: ignore[assignment,misc]
     START = END = None  # type: ignore[assignment]
     Command = Any  # type: ignore[assignment,misc]
@@ -22,6 +21,9 @@ from app.agents.state import GrowthState
 from app.agents.trend_agent import trend_agent
 from app.agents.voice_agent import voice_agent
 from app.audio_analysis import analyze_audio
+from app.config import GROWTH_CHECKPOINT_DB_PATH
+
+logger = logging.getLogger(__name__)
 
 
 def extract_audio_features(state: GrowthState) -> dict[str, object]:
@@ -46,9 +48,40 @@ def selection_interrupt(state: GrowthState) -> dict[str, list[str]]:
     return {"selected_idea_ids": [str(item) for item in selected_ids if str(item) in valid_ids]}
 
 
+def _build_checkpointer() -> Any:
+    """Хранилище состояния графа между шагами (`/api/growth/start` и `/api/growth/select`).
+
+    Эти два запроса могут выполняться в разных процессах — например, в разных
+    Celery-воркерах, — поэтому состояние не может жить только в памяти одного
+    процесса. SQLite-файл на общем томе (см. docker-compose.yml) делает его
+    общим между веб-процессом и воркером ценой одного файла, без отдельного
+    сервиса БД. Если файл недоступен (нет прав на каталог и т.п.), используется
+    MemorySaver — граф работает, но только в пределах одного процесса.
+    """
+    try:
+        import sqlite3
+
+        from langgraph.checkpoint.sqlite import SqliteSaver
+
+        conn = sqlite3.connect(str(GROWTH_CHECKPOINT_DB_PATH), check_same_thread=False, timeout=30)
+        saver = SqliteSaver(conn)
+        saver.setup()
+        return saver
+    except Exception as exc:
+        logger.warning(
+            "SqliteSaver недоступен (%s) — состояние Growth Copilot будет жить "
+            "только в памяти текущего процесса. С Celery это ломает "
+            "/api/growth/select, если start и select достанутся разным воркерам.",
+            exc,
+        )
+        from langgraph.checkpoint.memory import MemorySaver
+
+        return MemorySaver()
+
+
 def build_growth_graph() -> Any:
-    """Компилирует граф; для production MemorySaver следует заменить на SqliteSaver/PostgresSaver."""
-    if StateGraph is None or MemorySaver is None:
+    """Компилирует граф Growth Copilot."""
+    if StateGraph is None:
         raise RuntimeError("Установите зависимости langgraph и langchain-core")
 
     builder = StateGraph(GrowthState)
@@ -72,7 +105,7 @@ def build_growth_graph() -> Any:
         critique_router,
         {"retry": "draft_agent", "done": END},
     )
-    return builder.compile(checkpointer=MemorySaver())
+    return builder.compile(checkpointer=_build_checkpointer())
 
 
 growth_graph = build_growth_graph() if StateGraph is not None else None

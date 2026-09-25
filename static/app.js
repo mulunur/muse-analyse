@@ -175,6 +175,27 @@ function renderReview(review) {
   document.getElementById("reviewText").textContent = text;
 }
 
+// Анализ и Growth Copilot выполняются в фоне (Celery), запрос сразу
+// возвращает task_id — результат забирается опросом этого эндпоинта.
+async function pollTask(taskId, { intervalMs = 1500, timeoutMs = 180000 } = {}) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const response = await fetch(`/api/tasks/${taskId}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || "Не удалось получить статус задачи");
+    }
+    if (data.status === "done") return data.result;
+    if (data.status === "error") throw new Error(data.error || "Задача завершилась с ошибкой");
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error("Превышено время ожидания результата");
+}
+
 async function analyzeFile(file) {
   if (!file) return;
 
@@ -199,9 +220,11 @@ async function analyzeFile(file) {
       throw new Error(detail);
     }
 
+    const result = await pollTask(data.task_id);
+
     hideStatus();
-    renderFeatures(data.features);
-    renderReview(data.review);
+    renderFeatures(result.features);
+    renderReview(result.review);
     resultsEl.classList.remove("hidden");
   } catch (err) {
     showStatus(`Ошибка: ${err.message}`, "error");
@@ -288,9 +311,13 @@ async function startGrowthWorkflow() {
       throw new Error(detail);
     }
 
-    hideStatus(growthStatus);
+    // thread_id уже известен сразу — он нужен на следующем шаге (select) —
+    // а не только после того, как отработает сам граф.
     growthState.threadId = data.thread_id;
-    renderGrowthIdeas(data.content_ideas || []);
+    const result = await pollTask(data.task_id);
+
+    hideStatus(growthStatus);
+    renderGrowthIdeas(result.content_ideas || []);
     showStatus("Идеи сформированы. Выберите самые сильные и сгенерируйте черновики.", "loading", growthStatus);
     setTimeout(() => hideStatus(growthStatus), 2000);
   } catch (err) {
@@ -330,8 +357,10 @@ async function generateGrowthDrafts() {
       throw new Error(detail);
     }
 
+    const result = await pollTask(data.task_id);
+
     hideStatus(document.getElementById("growthStatus"));
-    renderGrowthDrafts(data.drafts || {});
+    renderGrowthDrafts(result.drafts || {});
   } catch (err) {
     showStatus(`Ошибка: ${err.message}`, "error", document.getElementById("growthStatus"));
   }

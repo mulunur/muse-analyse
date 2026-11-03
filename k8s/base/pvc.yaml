@@ -1,0 +1,55 @@
+# PersistentVolumeClaim (PVC) — "заявка на диск". Под сам диск не создаёт,
+# он просит у кластера том нужного размера, а кластер выдаёт его через
+# StorageClass. storageClassName не указан намеренно: берётся класс по
+# умолчанию, он есть и в kind, и в minikube, и в k3s (у каждого свой, но все
+# называются "по умолчанию") — поэтому манифест переносим между ними.
+#
+# ReadWriteOnce (RWO) = том может быть подключён с ОДНОГО узла (несколько
+# подов на этом узле могут им пользоваться вместе). Именно поэтому воркер
+# привязан к узлу веб-пода (см. affinity в worker.yaml): uploads и
+# growth-state должны быть видны обоим.
+
+# Загруженные треки. В docker-compose это был tmpfs в оперативной памяти;
+# в кластере общий том между подами — это диск. Файл удаляется сразу после
+# обработки, поэтому места нужно немного (лимит загрузки — 50 МБ).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uploads
+  labels:
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+# Файл SQLite с состоянием Growth Copilot между /api/growth/start и /select.
+# SQLite в режиме WAL общается через файл общей памяти (-shm), поэтому веб-под
+# и воркер обязаны быть на ОДНОМ узле и на локальном диске. Сетевую файловую
+# систему (NFS и т.п.) для этого файла использовать нельзя; на нескольких
+# узлах понадобится PostgreSQL (PostgresSaver в LangGraph).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: growth-state
+  labels:
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Данные Redis (снимки dump.rdb). Очередь переживёт перезапуск пода.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  labels:
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi

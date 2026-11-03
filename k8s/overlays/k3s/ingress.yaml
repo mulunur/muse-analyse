@@ -1,0 +1,32 @@
+# Ingress — правило "HTTP-запросы снаружи -> этот Service". Сам по себе он ничего
+# не делает: нужен Ingress-контроллер, который эти правила исполняет.
+# В k3s он есть из коробки — Traefik (ingressClassName: traefik).
+#
+# В kind и minikube контроллера по умолчанию нет (в minikube: `minikube addons
+# enable ingress` — это ingress-nginx, класс "nginx"); проще там пользоваться
+# `kubectl port-forward`, см. README.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/part-of: muse-analyse
+  annotations:
+    # Нужна только для ingress-nginx: у него лимит тела запроса по умолчанию
+    # 1 МБ, а треки грузятся до 50 МБ (MAX_UPLOAD_SIZE_MB). У Traefik лимита по
+    # умолчанию нет — аннотация ему безвредна.
+    nginx.ingress.kubernetes.io/proxy-body-size: 50m
+spec:
+  ingressClassName: traefik
+  rules:
+    # Без host: правило ловит любой запрос по IP/имени сервера.
+    # Для домена добавьте строку `- host: muse.example.com` перед `http:`.
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http

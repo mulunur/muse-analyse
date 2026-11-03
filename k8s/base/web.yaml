@@ -1,0 +1,129 @@
+# Веб-приложение (FastAPI + uvicorn). Аналог сервиса `muse-analyse`
+# из docker-compose.yml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: muse-analyse
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  replicas: 1
+  # Recreate — по той же причине, что у Redis: тома uploads и growth-state
+  # подключаются одним узлом, два пода одновременно на обновлении не нужны.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: muse-analyse
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: muse-analyse
+        app.kubernetes.io/component: web
+        app.kubernetes.io/part-of: muse-analyse
+    spec:
+      enableServiceLinks: false
+      # Образ запускается от пользователя appuser (uid 10001, см. Dockerfile).
+      # runAsUser нужен явно: в образе USER задан именем, а не числом, и без
+      # числа Kubernetes не может проверить runAsNonRoot.
+      # fsGroup: тома монтируются под root; fsGroup даёт группе 10001 право
+      # записи, иначе приложение не сможет создать файлы в /app/uploads.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          # Тот же образ, что собирает docker-compose (target: runtime).
+          # Для kind/minikube его загружают в кластер вручную, см. README.
+          image: muse-analyse:local
+          imagePullPolicy: IfNotPresent
+          # Команду не переопределяем: берётся CMD из Dockerfile (uvicorn).
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: muse-config
+            # Секрет с ключами; optional — без него под всё равно стартует.
+            - secretRef:
+                name: muse-secrets
+                optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+            - name: growth-state
+              mountPath: /app/data/growth
+          # requests — сколько ресурсов "гарантируется" и по чему планировщик
+          # выбирает узел. limits.memory - это потолок: при превышении контейнер
+          # убивается (OOMKilled). Значения по замерам: ~220–350 МБ в покое;
+          # подстройте по `kubectl top pod`.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          # Пробы бьют в /healthz: он
+          # ничего не опрашивает и отвечает за доли миллисекунды. Подробный
+          # /api/health для этого не подходит: он при каждом вызове ходит в
+          # Ollama (таймаут 2 с) и в RAG, а при молчащей Ollama на эти 2 с
+          # замораживает весь веб-процесс (замерено), из-за чего проба
+          # могла бы "мигать".
+          # startupProbe даёт запуску до 3 минут (импорт TensorFlow/Essentia);
+          # liveness и readiness включаются только после него.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: uploads
+        - name: growth-state
+          persistentVolumeClaim:
+            claimName: growth-state
+---
+# Service — постоянный адрес для веб-пода внутри кластера (тип ClusterIP:
+# снаружи недоступен). Наружу его открывают port-forward-ом или Ingress-ом,
+# см. README.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: muse-analyse
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  selector:
+    app.kubernetes.io/name: muse-analyse
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

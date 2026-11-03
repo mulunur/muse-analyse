@@ -1,0 +1,10 @@
+# Патч поверх ConfigMap из базы: Kustomize мерджит data по ключам.
+# меняет RAG_ENABLED и добавляет HF_HOME
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: muse-config
+data:
+  RAG_ENABLED: "true"
+  # Куда huggingface/sentence-transformers кладут скачанные модели.
+  HF_HOME: /app/data/hf-cache

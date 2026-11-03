@@ -1,0 +1,31 @@
+# Оверлей для k3s: та же база + Ingress для Traefik. Больше ничем от
+# kind/minikube манифесты не отличаются — различия в том, как образ попадает
+# в кластер и как трафик приходит снаружи (подробнее — k8s/README.md).
+#
+#   kubectl apply -k k8s/overlays/k3s
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# namespace из базы действует только на её ресурсы — Ingress из этого
+# оверлея нужно положить в тот же namespace отдельно.
+namespace: muse-analyse
+
+resources:
+  - ../../base
+  - ingress.yaml
+
+# RAG (нужен сервер с запасом памяти — см. k8s/README.md). Раскомментируйте
+# и соберите образ: docker build --target rag -t muse-analyse:rag .
+# components:
+#   - ../../components/rag
+
+# Образ из реестра вместо локального (раскомментируйте, когда образ будет
+# опубликован, например, в GitHub Container Registry; адрес — пример):
+#
+# images:
+#   - name: muse-analyse
+#     newName: ghcr.io/ВАШ_ЛОГИН/muse-analyse
+#     newTag: v1
+#
+# Без этого блока образ muse-analyse:local нужно один раз импортировать в k3s:
+#   docker save muse-analyse:local | sudo k3s ctr images import -

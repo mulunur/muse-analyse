@@ -1,0 +1,31 @@
+# Патч поверх Deployment worker: тома RAG и больше памяти.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  template:
+    spec:
+      containers:
+        - name: worker
+          volumeMounts:
+            - name: rag-index
+              mountPath: /app/data/rag_index
+            - name: hf-cache
+              mountPath: /app/data/hf-cache
+          # Замер на macOS: воркер после первого RAG-запроса ~1,37 ГБ
+          # (без RAG — ~0,3 ГБ), плюс рабочий набор анализа аудио (~0,7 МБ на
+          # секунду трека). Поэтому лимит 2,5 ГиБ. На Linux цифры могут
+          # отличаться — смотрите `kubectl top pod` и подстраивайте.
+          resources:
+            requests:
+              memory: 1536Mi
+            limits:
+              memory: 2560Mi
+      volumes:
+        - name: rag-index
+          persistentVolumeClaim:
+            claimName: rag-index
+        - name: hf-cache
+          persistentVolumeClaim:
+            claimName: hf-cache

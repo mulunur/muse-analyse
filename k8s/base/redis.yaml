@@ -1,0 +1,82 @@
+# Redis — брокер и хранилище результатов Celery.
+#
+# Deployment — "держи всегда запущенной 1 копию этого пода и перезапускай,
+# если упал".
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  replicas: 1
+  # Recreate: сначала останавливает старый под, потом создаёт новый. Нужно,
+  # потому что том redis-data может быть подключён только одним узлом (RWO),
+  # а обычное RollingUpdate на время обновления держит два пода одновременно.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/component: redis
+        app.kubernetes.io/part-of: muse-analyse
+    spec:
+      # Не создавать переменные окружения вида REDIS_PORT=tcp://10.0.0.5:6379
+      # для каждого Service в namespace — иногда они ломают приложения,
+      # ожидающие REDIS_PORT=6379. Адреса нужны только через DNS-имена.
+      enableServiceLinks: false
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - name: redis
+              containerPort: 6379
+          # Образ сам при старте от root меняет владельца /data и понижает
+          # привилегии до пользователя redis — поэтому securityContext здесь
+          # не задаём (в отличие от web/worker).
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: redis-data
+---
+# Service — это постоянный адрес для группы подов. Поды приходят и уходят,
+# меняя IP, а Service с именем "redis" остаётся: к нему обращаются как
+# redis://redis:6379 (имя берётся из metadata.name).
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  selector:
+    app.kubernetes.io/name: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis

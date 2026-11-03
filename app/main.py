@@ -114,6 +114,17 @@ async def index():
     return {"message": "Muse Analyse API", "docs": "/docs"}
 
 
+@app.get("/healthz")
+async def healthz():
+    """Лёгкая проверка "процесс жив и обслуживает запросы" для проб Kubernetes.
+
+    Намеренно ничего не опрашивает (ни Ollama, ни RAG, ни Redis): сбой внешней
+    зависимости не должен приводить к перезапуску самого веб-процесса.
+    Подробный статус системы — в /api/health.
+    """
+    return {"status": "ok"}
+
+
 @app.get("/api/health")
 async def health():
     llm_providers = LLMProviderFactory.list_available_providers()

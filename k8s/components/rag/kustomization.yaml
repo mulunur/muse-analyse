@@ -1,0 +1,27 @@
+# Component — подключаемая "опция" поверх базы (аналог профиля `rag`
+# в docker-compose.yml). Сама по себе не применяется, а подключается строкой
+# `components:` из оверлея — см. overlays/local-rag (kind/minikube) и
+# закомментированный блок в overlays/k3s.
+#
+# Что меняет:
+#   1. образ muse-analyse:local -> muse-analyse:rag (target `rag` в Dockerfile,
+#      где доустановлены torch, sentence-transformers, chromadb);
+#   2. RAG_ENABLED=true и кэш HuggingFace на общем томе;
+#   3. подключает тома с индексом и кэшем модели к web и worker;
+#   4. поднимает лимиты памяти (воркер с RAG в замерах занимает ~1,4 ГБ);
+#   5. добавляет Job, который строит индекс из PDF.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+images:
+  - name: muse-analyse
+    newTag: rag
+
+resources:
+  - pvc.yaml
+  - index-job.yaml
+
+patches:
+  - path: configmap-patch.yaml
+  - path: web-patch.yaml
+  - path: worker-patch.yaml

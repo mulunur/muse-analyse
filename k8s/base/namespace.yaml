@@ -1,0 +1,6 @@
+# Namespace — "папка" внутри кластера: все ресурсы проекта живут в ней,
+# и их можно удалить одной командой: kubectl delete namespace muse-analyse
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: muse-analyse

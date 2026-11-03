@@ -1,0 +1,103 @@
+# Воркер Celery: выполняет анализ трека и шаги Growth Copilot. Аналог
+# сервиса `worker` из docker-compose.yml. Тот же образ, что и у web,
+# отличается только командой запуска.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    app.kubernetes.io/name: muse-analyse
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  # Один воркер. Нагрузку масштабируют числом реплик (см. README про KEDA),
+  # а не параметром --concurrency: у каждого пода собственный лимит памяти.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: muse-analyse
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: muse-analyse
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: muse-analyse
+    spec:
+      enableServiceLinks: false
+      # Celery при SIGTERM (остановке пода) дорабатывает текущую задачу.
+      # Анализ трека + LLM-вызовы занимают до минуты-двух, так что даём запас,
+      # иначе по умолчанию (30 с) задачу оборвут.
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # Воркеру нужны те же тома uploads и growth-state, что и вебу, а они
+      # RWO — доступны только с одного узла. podAffinity требует поставить
+      # воркер на тот же узел (kubernetes.io/hostname), где стоит под web.
+      # На кластере из одного узла (kind, minikube, k3s на одном VPS) условие
+      # выполняется само; на многоузловом оно не даст разъехаться.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: muse-analyse
+                  app.kubernetes.io/component: web
+      containers:
+        - name: worker
+          image: muse-analyse:local
+          imagePullPolicy: IfNotPresent
+          command: ["celery"]
+          args:
+            - -A
+            - app.tasks
+            - worker
+            - --loglevel=info
+            - --concurrency=1
+          envFrom:
+            - configMapRef:
+                name: muse-config
+            - secretRef:
+                name: muse-secrets
+                optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+            - name: growth-state
+              mountPath: /app/data/growth
+          # Память воркера растёт с длиной трека: на macOS замерено ~290 МБ
+          # после старта и ~460 МБ пик на треке в 4 минуты (около 0,7 МБ на
+          # секунду аудио). Лимит 1 ГиБ — примерно до 15–17-минутного трека,
+          # дальше контейнер убьют (OOMKilled).
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          # Пробы для воркера не задаём: HTTP у него нет. Если процесс celery
+          # завершился, Kubernetes сам перезапустит под. Для "зависшего, но
+          # живого" воркера обычно делают exec-пробу
+          #   celery -A app.tasks inspect ping -d celery@$HOSTNAME
+          # (импорт app.tasks дёшев — замерено ~33 МБ), но неверно настроенная
+          # liveness-проба перезапускает под посреди задачи, а на живом воркере
+          # я её не проверял — добавляйте осознанно.
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: uploads
+        - name: growth-state
+          persistentVolumeClaim:
+            claimName: growth-state

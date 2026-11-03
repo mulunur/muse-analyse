@@ -1,0 +1,28 @@
+# Векторный индекс учебника (в проекте занимает ~30 МБ) — создаёт Job
+# index-knowledge, читают web и worker.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rag-index
+  labels:
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Кэш моделей HuggingFace. Модель эмбеддингов скачивается при первом
+# обращении (порядка полугигабайта); на общем томе её скачивают один раз,
+# а не каждый под при каждом старте.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hf-cache
+  labels:
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 3Gi

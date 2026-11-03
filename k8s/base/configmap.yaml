@@ -1,0 +1,39 @@
+# Обычные (не секретные) настройки. Аналог блока `environment:`
+# в docker-compose.yml. Поды получают их как переменные окружения (envFrom).
+#
+# Секретные значения (API-ключи) сюда НЕ кладём, они идут через Secret,
+# см. secret.example.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: muse-config
+  labels:
+    app.kubernetes.io/name: muse-analyse
+    app.kubernetes.io/part-of: muse-analyse
+data:
+  HOST: "0.0.0.0"
+  PORT: "8000"
+  MAX_UPLOAD_SIZE_MB: "50"
+
+  # RAG выключен, как в базовом сервисе compose. Включается компонентом
+  # components/rag (он же подменяет образ и подключает тома индекса).
+  RAG_ENABLED: "false"
+  RAG_INDEX_DIR: /app/data/rag_index
+  # PDF-учебник уже лежит внутри образа (COPY data/knowledge в Dockerfile).
+  KNOWLEDGE_DIR: /app/data/knowledge
+
+  # Файл состояния Growth Copilot (SQLite). Лежит на томе growth-state,
+  # который делят веб-под и воркер, см. pvc.yaml.
+  GROWTH_CHECKPOINT_DB_PATH: /app/data/growth/checkpoints.sqlite3
+
+  # Очередь Celery. "redis" - это имя Service из redis.yaml: внутри кластера
+  # поды находят друг друга по имени сервиса (DNS), а не по IP.
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+  # --- Провайдер LLM ---
+  # LLM_PROVIDER: "ollama"
+  # Ollama на вашем компьютере из пода kind/minikube:
+  # OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+  # OLLAMA_MODEL: "gemma4:latest"

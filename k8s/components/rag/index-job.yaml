@@ -1,0 +1,76 @@
+# Job — одноразовая задача "выполни и завершись" (в отличие от Deployment,
+# который держит под запущенным всегда). Аналог команды из README:
+#   docker compose --profile rag run --rm muse-analyse-rag python scripts/index_knowledge.py
+#
+# Повторный запуск (например, после смены PDF): Job менять нельзя, поэтому
+#   kubectl -n muse-analyse delete job index-knowledge
+#   kubectl apply -k <ваш оверлей>
+# Посмотреть ход: kubectl -n muse-analyse logs job/index-knowledge -f
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: index-knowledge
+  labels:
+    app.kubernetes.io/name: muse-analyse
+    app.kubernetes.io/component: index-knowledge
+    app.kubernetes.io/part-of: muse-analyse
+spec:
+  # Не перезапускать бесконечно при ошибке (например, нет сети для скачивания
+  # модели): одна повторная попытка, дальше смотрим логи.
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: muse-analyse
+        app.kubernetes.io/component: index-knowledge
+        app.kubernetes.io/part-of: muse-analyse
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # Тома rag-index и hf-cache — RWO, поэтому Job должен оказаться на том же
+      # узле, что и web (см. такой же блок в worker.yaml).
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: muse-analyse
+                  app.kubernetes.io/component: web
+      containers:
+        - name: index-knowledge
+          image: muse-analyse:local   # компонент подменяет тег на :rag
+          imagePullPolicy: IfNotPresent
+          command: ["python", "scripts/index_knowledge.py"]
+          # --force пересоздаёт индекс с нуля (идемпотентный запуск).
+          args: ["--force"]
+          envFrom:
+            - configMapRef:
+                name: muse-config
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: rag-index
+              mountPath: /app/data/rag_index
+            - name: hf-cache
+              mountPath: /app/data/hf-cache
+          resources:
+            requests:
+              memory: 1Gi
+            limits:
+              memory: 2560Mi
+      volumes:
+        - name: rag-index
+          persistentVolumeClaim:
+            claimName: rag-index
+        - name: hf-cache
+          persistentVolumeClaim:
+            claimName: hf-cache

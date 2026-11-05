@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Точка входа для запуска Muse Analyse."""
+"""Entry point for running Muse Analyse."""
 
 import uvicorn
 

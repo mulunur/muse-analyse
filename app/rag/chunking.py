@@ -1,4 +1,4 @@
-"""Разбиение текста на перекрывающиеся фрагменты."""
+"""Splitting text into overlapping chunks."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 
 def _split_into_paragraphs(text: str) -> list[str]:
-    """Делит текст на абзацы, сохраняя смысловые блоки."""
+    """Splits text into paragraphs, keeping each meaningful block together."""
     paragraphs = re.split(r"\n\s*\n+", text)
     return [p.strip() for p in paragraphs if p.strip()]
 
@@ -20,10 +20,10 @@ def chunk_pages(
     source: str = "",
 ) -> list[dict[str, Any]]:
     """
-    Разбивает страницы PDF на чанки с перекрытием.
+    Splits PDF pages into overlapping chunks.
 
-    Стратегия: объединяем абзацы, пока не достигнем chunk_size;
-    при переполнении начинаем новый чанк с overlap из предыдущего.
+    How it works: paragraphs are glued together until the chunk reaches
+    chunk_size; then a new chunk starts, beginning with the tail (overlap) of the previous one.
     """
     if chunk_size <= 0:
         raise ValueError("chunk_size должен быть больше нуля")
@@ -61,7 +61,7 @@ def chunk_pages(
                 else:
                     buffer = para
             else:
-                # Один абзац длиннее chunk_size — режем по предложениям
+                # A single paragraph is longer than chunk_size, so split it by sentences
                 sentences = re.split(r"(?<=[.!?…])\s+", para)
                 buffer = ""
                 for sentence in sentences:

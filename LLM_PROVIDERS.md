@@ -1,22 +1,22 @@
-# Использование разных LLM провайдеров в Muse Analyse
+# Using different LLM providers in Muse Analyse
 
-После реализации поддержки множественных LLM провайдеров, теперь вы можете выбрать любого провайдера в зависимости от ваших нужд.
+Now that several LLM providers are supported, you can pick whichever one suits your needs.
 
-## Быстрый старт
+## Quick start
 
-### 1. Копируем конфиг
+### 1. Copy the config
 ```bash
 cp .env.example .env
 ```
 
-### 2. Выбираем провайдера
-Отредактируйте `.env` и установите `LLM_PROVIDER` одному из:
-- `openai` (по умолчанию)
+### 2. Pick a provider
+Edit `.env` and set `LLM_PROVIDER` to one of:
+- `openai` (the default)
 - `claude`
 - `ollama`
 - `nemotron`
 
-### 3. Запускаем
+### 3. Run it
 ```bash
 pip install -r requirements.txt
 python run.py
@@ -24,78 +24,78 @@ python run.py
 
 ---
 
-## Конфигурация каждого провайдера
+## Configuring each provider
 
 ### OpenAI GPT
-**Лучше для:** универсального использования, высокого качества обзоров
+**Best for:** general use and high-quality reviews
 
 ```env
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-your-api-key-here
-OPENAI_MODEL=gpt-4o-mini  # или gpt-4, gpt-4-turbo и т.д.
+OPENAI_MODEL=gpt-4o-mini  # or gpt-4, gpt-4-turbo and so on
 ```
 
-> **Примечание:** для Claude параметр `LLM_TEMPERATURE` не применяется — актуальные модели
-> (Sonnet 5, Opus 5) отклоняют sampling-параметры ошибкой 400.
-
-**Установка:**
+**Installation:**
 ```bash
-pip install openai>=1.55.0
+pip install langchain-openai>=0.3.0  # already in requirements.txt
 ```
 
-**Получить API ключ:** https://platform.openai.com/api-keys
+**Get an API key:** https://platform.openai.com/api-keys
 
-**Стоимость:** платное, ~$0.15 за 1M входных токенов (GPT-4o-mini)
+**Cost:** paid, about $0.15 per 1M input tokens (GPT-4o-mini)
 
 ---
 
 ### Anthropic Claude
-**Лучше для:** глубокого анализа музыки, сложных структурированных ответов
+**Best for:** deep music analysis and complex structured answers
 
 ```env
 LLM_PROVIDER=claude
 ANTHROPIC_API_KEY=sk-ant-your-api-key-here
-CLAUDE_MODEL=claude-sonnet-5  # или claude-opus-5 (мощнее), claude-haiku-4-5 (дешевле)
+CLAUDE_MODEL=claude-sonnet-5  # or claude-opus-5 (more capable), claude-haiku-4-5 (cheaper)
 ```
 
-**Установка:**
+> **Note:** `LLM_TEMPERATURE` does not apply to Claude. The current models
+> (Sonnet 5, Opus 5) reject sampling parameters with a 400 error.
+
+**Installation:**
 ```bash
-pip install anthropic>=0.30.0
+pip install langchain-anthropic>=0.3.0  # already in requirements.txt
 ```
 
-**Получить API ключ:** https://console.anthropic.com/
+**Get an API key:** https://console.anthropic.com/
 
-**Стоимость:** платное, ~$3 за 1M входных токенов (Claude 3.5 Sonnet)
+**Cost:** paid, about $2 per 1M input tokens and $10 per 1M output tokens (Claude Sonnet 5)
 
 ---
 
-### Ollama (локальный)
-**Лучше для:** приватности, без коммерческих ограничений, бесплатного локального запуска
+### Ollama (local)
+**Best for:** privacy, no commercial restrictions, and free local use
 
 ```env
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=mistral  # или llama2, neural-chat, etc.
+OLLAMA_MODEL=mistral  # or llama2, neural-chat, etc.
 ```
 
-**Установка Ollama:**
-1. Скачайте с https://ollama.ai/download
-2. Запустите: `ollama serve`
-3. В другом терминале скачайте модель: `ollama pull mistral`
+**Installing Ollama:**
+1. Download it from https://ollama.ai/download
+2. Start it: `ollama serve`
+3. In another terminal, download a model: `ollama pull mistral`
 
-**Доступные модели:**
-- `mistral` — 7B, быстрая, хорошее качество
-- `llama2` — 7B, универсальная
-- `neural-chat` — 7B, оптимизирована для диалога
-- `orca-mini` — 3B, легкая
-- Полный список: https://ollama.ai/library
+**Available models:**
+- `mistral`: 7B, fast, good quality
+- `llama2`: 7B, a general-purpose model
+- `neural-chat`: 7B, tuned for dialogue
+- `orca-mini`: 3B, lightweight
+- Full list: https://ollama.ai/library
 
-**Стоимость:** бесплатно (локальный запуск)
+**Cost:** free (it runs on your machine)
 
 ---
 
 ### NVIDIA Nemotron API
-**Лучше для:** баланса между качеством и скоростью на NVIDIA инфраструктуре
+**Best for:** a balance of quality and speed on NVIDIA infrastructure
 
 ```env
 LLM_PROVIDER=nemotron
@@ -104,32 +104,32 @@ NEMOTRON_MODEL=meta/llama-2-70b-chat
 NEMOTRON_BASE_URL=https://integrate.api.nvidia.com/v1
 ```
 
-**Установка:**
+**Installation:**
 ```bash
-pip install requests>=2.31.0  # уже есть в requirements.txt
+pip install langchain-openai>=0.3.0  # already in requirements.txt (the NVIDIA API is OpenAI-compatible)
 ```
 
-**Получить API ключ:** 
-1. Зарегистрируйтесь на https://developer.nvidia.com/
-2. Создайте API ключ в https://docs.nvidia.com/cloud/cloud-docs/getting-started/quickstart.html
+**Get an API key:**
+1. Sign up at https://developer.nvidia.com/
+2. Create an API key following https://docs.nvidia.com/cloud/cloud-docs/getting-started/quickstart.html
 
-**Доступные модели:**
-- `meta/llama-2-70b-chat` — мощная, качественная
-- `mistralai/mixtral-8x7b-instruct-v0.1` — быстрая
-- Полный список: https://docs.nvidia.com/cloud/cloud-docs/getting-started/quickstart.html
+**Available models:**
+- `meta/llama-2-70b-chat`: powerful, high quality
+- `mistralai/mixtral-8x7b-instruct-v0.1`: fast
+- Full list: https://docs.nvidia.com/cloud/cloud-docs/getting-started/quickstart.html
 
-**Стоимость:** часто бесплатно для новых пользователей, затем платно
+**Cost:** often free for new users, paid afterwards
 
 ---
 
-## API эндпоинты
+## API endpoints
 
-### Проверить доступные провайдеры
+### Check the available providers
 ```bash
 curl http://localhost:8000/api/providers
 ```
 
-Ответ:
+Response:
 ```json
 {
   "available": {
@@ -147,52 +147,56 @@ curl http://localhost:8000/api/providers
 }
 ```
 
-### Загрузить аудио и получить обзор
+(The descriptions are the app's own Russian strings; they say which key or service each provider needs.)
+
+### Upload audio and get a review
 ```bash
 curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze
 ```
 
-Ответ включит:
-- `features` — все параметры Essentia
-- `review` — обзор от выбранного LLM провайдера
-  - `source` — название провайдера
-  - `model` — использованная модель
-  - `score` — оценка 1-10
-  - `sections` — структурированный обзор
-  - `full_text` — полный текст обзора
+The analysis runs in the background, so this returns a `task_id` straight away. Fetch the result with `GET /api/tasks/<task_id>` (see the README for the details).
+
+When the task is done, the result includes:
+- `features`: all the Essentia parameters
+- `review`: a review from the chosen LLM provider
+  - `source`: the provider's name
+  - `model`: the model that was used
+  - `score`: a score from 1 to 10
+  - `sections`: the structured review
+  - `full_text`: the full text of the review
 
 ---
 
-## Рекомендации
+## Recommendations
 
-| Сценарий | Провайдер | Причина |
-|----------|-----------|---------|
-| Быстрый старт | OpenAI | Наиболее стабильный, хорошее качество |
-| Приватный анализ | Ollama | Локальный запуск, нет отправки данных |
-| Лучшее качество | Claude | Самые мощные рассуждения |
-| Бюджетный вариант | Ollama (mistral) | Бесплатно локально |
-| Production на GPU | Nemotron | Оптимизирована для NVIDIA железа |
-
----
-
-## Fallback механизм
-
-Если выбранный провайдер недоступен или произойдёт ошибка, система автоматически вернёт **шаблонный обзор** (template) на основе параметров Essentia.
-
-Это гарантирует, что анализ аудио всегда работает, даже без интернета и API ключей.
+| Scenario | Provider | Why |
+|----------|----------|-----|
+| A quick start | OpenAI | The most stable, with good quality |
+| Private analysis | Ollama | It runs locally and sends no data out |
+| Best quality | Claude | The strongest reasoning |
+| A budget option | Ollama (mistral) | Free, and local |
+| Production on a GPU | Nemotron | Optimised for NVIDIA hardware |
 
 ---
 
-## Примеры .env
+## The fallback mechanism
 
-### Для локального использования (Ollama)
+If the chosen provider is unavailable or something goes wrong, the system automatically returns a **template review** built from the Essentia parameters.
+
+This guarantees that audio analysis always works, even without internet access or API keys.
+
+---
+
+## .env examples
+
+### For local use (Ollama)
 ```env
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=mistral
 ```
 
-### Для production с OpenAI
+### For production with OpenAI
 ```env
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-xxxxxxxxx
@@ -201,11 +205,10 @@ LLM_TEMPERATURE=0.7
 LLM_MAX_TOKENS=2000
 ```
 
-### Для production с Claude
+### For production with Claude
 ```env
 LLM_PROVIDER=claude
 ANTHROPIC_API_KEY=sk-ant-xxxxxxx
 CLAUDE_MODEL=claude-sonnet-5
-LLM_TEMPERATURE=0.7
 LLM_MAX_TOKENS=2000
 ```

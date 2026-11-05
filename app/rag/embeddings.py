@@ -1,4 +1,4 @@
-"""Локальные эмбеддинги через sentence-transformers."""
+"""Local embeddings via sentence-transformers."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ _model_cache: dict[str, "SentenceTransformer"] = {}
 
 
 def get_embedding_model(model_name: str) -> "SentenceTransformer":
-    """Загружает и кэширует модель эмбеддингов."""
+    """Loads the embedding model and caches it."""
     if model_name not in _model_cache:
         try:
             from sentence_transformers import SentenceTransformer
@@ -30,7 +30,7 @@ def get_embedding_model(model_name: str) -> "SentenceTransformer":
 
 
 def embed_texts(model_name: str, texts: list[str]) -> list[list[float]]:
-    """Возвращает эмбеддинги для списка текстов."""
+    """Returns embeddings for a list of texts."""
     if not texts:
         return []
 

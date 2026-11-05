@@ -1,9 +1,9 @@
 services:
   redis:
     image: redis:7-alpine
-    # Только очередь Celery: брокер + result backend. Не хранилище состояния
-    # Growth Copilot (для этого используется SQLite на общем томе growth_state) —
-    # обычный Redis не поддерживает RediSearch, который для этого нужен бы был.
+    # Only the Celery queue: broker + result backend. It is not where Growth Copilot
+    # keeps its state (that is SQLite on the shared growth_state volume): plain Redis
+    # has no RediSearch, which that job would need.
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -59,8 +59,8 @@ services:
     volumes:
       - rag_index:/app/data/rag_index
       - growth_state:/app/data/growth
-      # Тот же том с загрузками, что и у muse-analyse — задачу ставит один
-      # контейнер, выполняет другой, файл должен быть виден обоим.
+      # The same uploads volume as muse-analyse uses: one container queues the task,
+      # another one runs it, so both must see the file.
       - uploads:/app/uploads
       - ./data/knowledge:/app/data/knowledge:ro
     depends_on:
@@ -130,9 +130,9 @@ volumes:
   rag_index:
   redis_data:
   growth_state:
-  # Раньше был tmpfs на одном контейнере — теперь именованный том с tmpfs-драйвером:
-  # файлы так же не пишутся на диск и живут только пока запущен docker compose,
-  # но при этом видны и веб-процессу, и воркеру, который их обрабатывает.
+  # It used to be a tmpfs private to one container; now it is a named volume with the tmpfs driver:
+  # files still never touch the disk and only live while docker compose is running,
+  # but both the web process and the worker that processes them can see them.
   uploads:
     driver: local
     driver_opts:

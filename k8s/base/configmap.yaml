@@ -1,8 +1,8 @@
-# Обычные (не секретные) настройки. Аналог блока `environment:`
-# в docker-compose.yml. Поды получают их как переменные окружения (envFrom).
+# Regular (non-secret) settings. The equivalent of the `environment:` block
+# in docker-compose.yml. Pods receive them as environment variables (envFrom).
 #
-# Секретные значения (API-ключи) сюда НЕ кладём, они идут через Secret,
-# см. secret.example.yaml.
+# Secret values (API keys) do NOT go here; they come through a Secret,
+# see secret.example.yaml.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -15,25 +15,25 @@ data:
   PORT: "8000"
   MAX_UPLOAD_SIZE_MB: "50"
 
-  # RAG выключен, как в базовом сервисе compose. Включается компонентом
-  # components/rag (он же подменяет образ и подключает тома индекса).
+  # RAG is off, just like in the base compose service. The components/rag component
+  # turns it on (and also swaps the image and mounts the index volumes).
   RAG_ENABLED: "false"
   RAG_INDEX_DIR: /app/data/rag_index
-  # PDF-учебник уже лежит внутри образа (COPY data/knowledge в Dockerfile).
+  # The PDF textbook is already inside the image (COPY data/knowledge in the Dockerfile).
   KNOWLEDGE_DIR: /app/data/knowledge
 
-  # Файл состояния Growth Copilot (SQLite). Лежит на томе growth-state,
-  # который делят веб-под и воркер, см. pvc.yaml.
+  # State file for Growth Copilot (SQLite). It lives on the growth-state volume,
+  # which the web pod and the worker share, see pvc.yaml.
   GROWTH_CHECKPOINT_DB_PATH: /app/data/growth/checkpoints.sqlite3
 
-  # Очередь Celery. "redis" - это имя Service из redis.yaml: внутри кластера
-  # поды находят друг друга по имени сервиса (DNS), а не по IP.
+  # Celery queue. "redis" is the name of the Service from redis.yaml: inside the cluster
+  # pods find each other by service name (DNS), not by IP.
   REDIS_URL: redis://redis:6379/0
   CELERY_BROKER_URL: redis://redis:6379/0
   CELERY_RESULT_BACKEND: redis://redis:6379/1
 
-  # --- Провайдер LLM ---
+  # --- LLM provider ---
   # LLM_PROVIDER: "ollama"
-  # Ollama на вашем компьютере из пода kind/minikube:
+  # Ollama on your own machine, as seen from a kind/minikube pod:
   # OLLAMA_BASE_URL: "http://host.docker.internal:11434"
   # OLLAMA_MODEL: "gemma4:latest"

@@ -41,10 +41,10 @@ uploads/
 tmp/
 *.tmp
 
-# RAG index (пересоздаётся скриптом index_knowledge.py)
+# RAG index (it is rebuilt by the index_knowledge.py script)
 data/rag_index/
 
-# Состояние Growth Copilot (SQLite-чекпойнтер LangGraph)
+# Growth Copilot state (LangGraph's SQLite checkpointer)
 data/growth/
 
 # Logs

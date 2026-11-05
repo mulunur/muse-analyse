@@ -1,4 +1,4 @@
-# Патч поверх Deployment worker: тома RAG и больше памяти.
+# A patch on top of the worker Deployment: the RAG volumes and more memory.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,10 +13,10 @@ spec:
               mountPath: /app/data/rag_index
             - name: hf-cache
               mountPath: /app/data/hf-cache
-          # Замер на macOS: воркер после первого RAG-запроса ~1,37 ГБ
-          # (без RAG — ~0,3 ГБ), плюс рабочий набор анализа аудио (~0,7 МБ на
-          # секунду трека). Поэтому лимит 2,5 ГиБ. На Linux цифры могут
-          # отличаться — смотрите `kubectl top pod` и подстраивайте.
+          # Measured on macOS: the worker after its first RAG request takes ~1.37 GB
+          # (without RAG ~0.3 GB), plus the working set of audio analysis (~0.7 MB per
+          # second of track). That is why the limit is 2.5 GiB. On Linux the numbers may
+          # differ: watch `kubectl top pod` and adjust.
           resources:
             requests:
               memory: 1536Mi

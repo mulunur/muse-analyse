@@ -1,4 +1,4 @@
-"""Извлечение музыкальных признаков с помощью Essentia."""
+"""Extracting musical features with Essentia."""
 
 from __future__ import annotations
 
@@ -23,11 +23,11 @@ except ImportError as exc:
 
 
 class AudioAnalysisError(Exception):
-    """Ошибка при анализе аудиофайла."""
+    """Raised when an audio file cannot be analysed."""
 
 
 def _coerce_to_float(value: Any, default: float | None = None) -> float | None:
-    """Преобразовать значение Essentia к float, поддерживая массивы и кортежи."""
+    """Turns an Essentia value into a float, handling arrays and tuples."""
     if value is None:
         return default
 
@@ -37,10 +37,10 @@ def _coerce_to_float(value: Any, default: float | None = None) -> float | None:
     if isinstance(value, tuple):
         if not value:
             return default
-        # Essentia часто возвращает (scalar, extra_array, ...), например
-        # RhythmExtractor2013 -> (bpm, beats, confidence, ...) или
-        # Danceability -> (danceability, dfa_array). Предпочитаем сам
-        # скаляр, а не усреднённый массив из "лишних" элементов кортежа.
+        # Essentia often returns (scalar, extra_array, ...), for example
+        # RhythmExtractor2013 -> (bpm, beats, confidence, ...) or
+        # Danceability -> (danceability, dfa_array). We prefer the scalar itself
+        # over the averaged array made from the tuple's "extra" elements.
         for item in value:
             if isinstance(item, (int, float)):
                 return float(item)
@@ -82,7 +82,7 @@ def _check_essentia() -> None:
 
 
 def _frame_features(audio: Any, sample_rate: int) -> dict[str, float]:
-    """Спектральные и ритмические признаки по кадрам."""
+    """Spectral and rhythm features, computed frame by frame."""
     frame_size = 2048
     hop_size = 1024
 
@@ -113,8 +113,8 @@ def _frame_features(audio: Any, sample_rate: int) -> dict[str, float]:
         rolloffs.append(float(rolloff_algo(spectrum)))
         zcrs.append(float(zcr_algo(frame)))
 
-        # Flux хранит предыдущий спектр во внутреннем состоянии и принимает
-        # только текущий кадр — второй позиционный аргумент не поддерживается.
+        # Flux keeps the previous spectrum in its internal state and only takes
+        # the current frame; passing a second positional argument is not supported.
         fluxes.append(float(flux_algo(spectrum)))
 
         _, mfcc_coeffs = mfcc_algo(spectrum)
@@ -130,7 +130,7 @@ def _frame_features(audio: Any, sample_rate: int) -> dict[str, float]:
             mfcc_avg.append(round(sum(row[i] for row in mfcc_means) / len(mfcc_means), 4))
 
     brightness_hz = _avg(centroids)
-    # Нормализованная яркость 0–1 относительно Nyquist
+    # Brightness normalised to 0-1 relative to the Nyquist frequency
     brightness_norm = round(min(brightness_hz / (sample_rate / 2), 1.0), 4)
 
     return {
@@ -146,7 +146,7 @@ def _frame_features(audio: Any, sample_rate: int) -> dict[str, float]:
 def _extract_hpcp_frames(
     audio: Any, sample_rate: int, frame_size: int = 2048, hop_size: int = 1024
 ) -> list[Any]:
-    """Извлекает последовательность HPCP (pitch class profile) по кадрам для ChordsDetection."""
+    """Extracts a sequence of HPCP (pitch class profile) frames for ChordsDetection."""
     windowing = es.Windowing(type="hann", size=frame_size)
     spectrum_algo = es.Spectrum(size=frame_size)
     peaks_algo = es.SpectralPeaks(sampleRate=sample_rate, orderBy="magnitude")
@@ -162,15 +162,15 @@ def _extract_hpcp_frames(
 
 
 def _tonal_features(audio: Any, sample_rate: int) -> dict[str, Any]:
-    """Тональность, гармония и танцевальность."""
+    """Key, harmony and danceability."""
     key, scale, key_strength = es.KeyExtractor()(audio)
     tuning_freq = _coerce_to_float(es.TuningFrequencyExtractor()(audio))
 
     try:
         danceability_raw, dfa = es.Danceability()(audio)
         danceability_raw = _coerce_to_float(danceability_raw, default=None)
-        # Essentia: "Normal values range from 0 to ~3" — нормализуем к 0–1,
-        # т.к. весь остальной код (обзоры, RAG, фронтенд) ожидает эту шкалу.
+        # Essentia says "Normal values range from 0 to ~3", so we normalise to 0-1,
+        # since all the other code (reviews, RAG, frontend) expects that scale.
         danceability = (
             round(min(max(danceability_raw / 3.0, 0.0), 1.0), 4)
             if danceability_raw is not None
@@ -182,7 +182,7 @@ def _tonal_features(audio: Any, sample_rate: int) -> dict[str, Any]:
         dfa_value = None
 
     try:
-        # ChordsDetection принимает последовательность HPCP-кадров, а не сырое аудио.
+        # ChordsDetection takes a sequence of HPCP frames, not raw audio.
         hpcp_frames = _extract_hpcp_frames(audio, sample_rate)
         chords, strength = es.ChordsDetection(sampleRate=sample_rate, hopSize=1024)(hpcp_frames)
         chord_hist: dict[str, int] = {}
@@ -204,15 +204,15 @@ def _tonal_features(audio: Any, sample_rate: int) -> dict[str, Any]:
 
 
 def _rhythm_features(audio: Any) -> dict[str, Any]:
-    """Темп, ритм и пульс."""
+    """Tempo, rhythm and pulse."""
     rhythm = es.RhythmExtractor2013(method="multifeature")
     bpm, beats, confidence, _, beat_intervals = rhythm(audio)
 
     onset_rate = _coerce_to_float(es.OnsetRate()(audio), default=None)
     try:
-        # BeatsLoudness (не BeatLoudness/BeatLoudnessBandRatio — таких алгоритмов
-        # в Essentia нет) возвращает громкость и её распределение по частотным
-        # полосам для каждого удара, используя позиции ударов из RhythmExtractor2013.
+        # BeatsLoudness (not BeatLoudness / BeatLoudnessBandRatio: Essentia has no such
+        # algorithms) returns the loudness of each beat and how it is spread across
+        # frequency bands, using the beat positions from RhythmExtractor2013.
         beat_loudness_values, beat_loudness_band_ratio_values = es.BeatsLoudness(beats=beats)(audio)
         beat_loudness = _coerce_to_float(list(beat_loudness_values), default=None)
         flat_band_ratios = [v for row in beat_loudness_band_ratio_values for v in row]
@@ -237,18 +237,18 @@ def _rhythm_features(audio: Any) -> dict[str, Any]:
 
 
 def _dynamics_features(audio: Any) -> dict[str, Any]:
-    """Громкость и динамика."""
+    """Loudness and dynamics."""
     try:
-        # LoudnessEBUR128 требует стерео-сигнал (vector_stereosample); у нас
-        # моно-загрузка, поэтому дублируем канал, чтобы получить валидный вход.
+        # LoudnessEBUR128 needs a stereo signal (vector_stereosample), but we load
+        # the track as mono, so we duplicate the channel to get a valid input.
         stereo_audio = np.column_stack([audio, audio]).astype(np.float32)
         _, _, loudness_ebu, _ = es.LoudnessEBUR128()(stereo_audio)
         loudness_ebu = _coerce_to_float(loudness_ebu, default=None)
     except Exception:
         loudness_ebu = None
 
-    # Loudness реализует степенной закон Стивенса (energy ** 0.67) — это НЕ
-    # значение в децибелах, несмотря на похожее название алгоритма.
+    # Loudness implements Stevens' power law (energy ** 0.67). It is NOT a value
+    # in decibels, despite the similar name of the algorithm.
     loudness_stevens = _coerce_to_float(es.Loudness()(audio), default=None)
     dynamic_complexity = _coerce_to_float(es.DynamicComplexity()(audio), default=None)
 
@@ -269,13 +269,13 @@ def _dynamics_features(audio: Any) -> dict[str, Any]:
 
 
 def _energy_proxy(features: dict[str, Any]) -> float:
-    """Оценка энергичности на основе доступных признаков (0–1)."""
+    """Rough energy score (0-1) built from the features we have."""
     rms = features.get("dynamics", {}).get("rms") or 0.0
     bpm = features.get("rhythm", {}).get("bpm") or 120.0
     brightness = features.get("spectral", {}).get("spectral_brightness") or 0.5
     danceability = features.get("tonal", {}).get("danceability") or 0.5
 
-    # Нормализация BPM: 60–180 → 0–1
+    # BPM normalisation: 60-180 -> 0-1
     bpm_norm = min(max((bpm - 60) / 120, 0.0), 1.0)
     rms_norm = min(rms * 10, 1.0)
 
@@ -285,9 +285,9 @@ def _energy_proxy(features: dict[str, Any]) -> float:
 
 def analyze_audio(file_path: str | Path) -> dict[str, Any]:
     """
-    Полный анализ аудиофайла.
+    Full analysis of an audio file.
 
-    Возвращает словарь с сырыми параметрами Essentia и метаданными.
+    Returns a dict with the raw Essentia parameters and some metadata.
     """
     _check_essentia()
 

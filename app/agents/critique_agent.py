@@ -1,4 +1,4 @@
-"""Проверка черновиков и маршрутизация повторов."""
+"""Reviews the drafts and decides whether they need another pass."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ _PROMPT = ChatPromptTemplate.from_messages(
 
 
 def critique_agent(state: GrowthState) -> dict[str, object]:
-    """Оценивает черновики по голосу, запретным словам и темам."""
+    """Checks the drafts against the artist's voice, forbidden words and themes."""
     profile = state.voice_profile
     critique = invoke_structured(
         _PROMPT,
@@ -50,7 +50,7 @@ def critique_agent(state: GrowthState) -> dict[str, object]:
 
 
 def critique_router(state: GrowthState) -> Literal["retry", "done"]:
-    """Возвращает retry максимум для двух повторных черновиков."""
+    """Sends the graph back to redraft, but at most twice."""
     if not state.critique_passed and state.retry_count < 2:
         return "retry"
     return "done"

@@ -1,111 +1,117 @@
 # Muse Analyse
 
-**Музыкальный анализ с помощью AI-рассуждения** — веб-приложение для извлечения музыкальных признаков из аудиофайлов с помощью [Essentia](https://essentia.upf.edu/) и генерации структурированных обзоров на русском языке.
+**Music analysis with AI reasoning.** A web app that pulls musical features out of audio files with [Essentia](https://essentia.upf.edu/) and turns them into a structured review written in Russian.
 
 ---
 
-## Возможности
+## Features
 
-- Загрузка аудио через веб-интерфейс (drag & drop)
-- Поддержка форматов: **MP3, WAV, FLAC, OGG, M4A**
-- Извлечение признаков Essentia: темп, тональность, громкость, спектр, ритм, танцевальность, энергия
-- Генерация музыкального обзора на **русском языке** с поддержкой **нескольких LLM провайдеров**:
-  - **OpenAI** — GPT-4o-mini и другие модели (платно)
-  - **Anthropic Claude** — Claude 3.5 Sonnet (платно)
-  - **Ollama** — локальный запуск, бесплатно (приватность)
-  - **NVIDIA Nemotron** — мощная API (платно или free tier)
-  - **Шаблонный fallback** — без API ключей, всегда работает
-- **RAG (Retrieval Augmented Generation)** — обзоры дополняются фрагментами из учебника «Теория современной композиции» для теоретически обоснованных оценок
-- Возврат сырых параметров (JSON) и текста обзора
+- Upload audio in the browser (drag & drop)
+- Supported formats: **MP3, WAV, FLAC, OGG, M4A**
+- Essentia features: tempo, key, loudness, spectrum, rhythm, danceability, energy
+- Reviews written in **Russian**, with a choice of **LLM providers**:
+  - **OpenAI**: GPT-4o-mini and other models (paid)
+  - **Anthropic Claude**: Claude Sonnet 5 by default (paid)
+  - **Ollama**: runs locally, free and private
+  - **NVIDIA Nemotron**: a powerful API (paid, or a free tier)
+  - **Template fallback**: needs no API keys, so it always works
+- **RAG (Retrieval Augmented Generation)**: reviews are enriched with passages from the textbook *Теория современной композиции* ("Theory of Contemporary Composition"), so the assessments are backed by music theory
+- Returns both the raw parameters (JSON) and the review text
 
 ---
 
-## Структура проекта
+## Project structure
 
 ```
-muse analyse/
+muse-analyse/
 ├── app/
-│   ├── __init__.py              # Версия пакета
-│   ├── config.py                # Конфигурация из .env
-│   ├── audio_analysis.py        # Essentia: извлечение признаков
-│   ├── llm_providers.py         # Поддержка OpenAI, Claude, Ollama, Nemotron
-│   ├── review_generator.py      # Генерация обзоров с fallback
-│   ├── rag/                     # RAG: индексация PDF, семантический поиск
-│   └── main.py                  # FastAPI-приложение
+│   ├── __init__.py              # Package version
+│   ├── config.py                # Settings from .env
+│   ├── audio_analysis.py        # Essentia feature extraction
+│   ├── llm_providers.py         # OpenAI, Claude, Ollama and Nemotron support
+│   ├── review_generator.py      # Review generation, with a template fallback
+│   ├── tasks.py                 # Celery app and background tasks
+│   ├── agents/                  # Growth Copilot: LangGraph graph and its agents
+│   ├── rag/                     # RAG: PDF indexing and semantic search
+│   └── main.py                  # FastAPI application
 ├── data/
-│   ├── knowledge/               # PDF-учебники (версионируются)
-│   └── rag_index/               # ChromaDB-индекс (gitignored, пересоздаётся)
+│   ├── knowledge/               # PDF textbooks (tracked in git)
+│   └── rag_index/               # ChromaDB index (gitignored, can be rebuilt)
+├── evals/                       # A simple eval for the LLM features (see evals/README.md)
+├── examples/
+│   └── test_providers.py        # Examples of calling the API
+├── k8s/                         # Kubernetes manifests (see k8s/README.md)
 ├── scripts/
-│   └── index_knowledge.py       # CLI для построения RAG-индекса
+│   ├── index_knowledge.py       # CLI that builds the RAG index
+│   └── check_mcp_server.py      # Manual check of the MCP server
 ├── static/
-│   ├── index.html               # Веб-интерфейс
+│   ├── index.html               # Web interface
 │   ├── style.css
 │   └── app.js
-├── uploads/                     # Временные файлы (gitignored)
-├── examples_test_providers.py   # Примеры использования API
-├── run.py                       # Запуск сервера
+├── tests/                       # Automated tests (pytest)
+├── mcp_server.py                # MCP server for Claude Desktop
+├── run.py                       # Starts the server
+├── Dockerfile
+├── docker-compose.yml
 ├── requirements.txt
 ├── .env.example
-├── LLM_PROVIDERS.md             # Документация по провайдерам
-├── .gitignore
+├── LLM_PROVIDERS.md             # Provider documentation
 └── README.md
 ```
 
 ---
 
-## Быстрый старт
+## Quick start
 
-### Рекомендуемый способ: Docker Compose
+### Recommended: Docker Compose
 
-Для локального запуска и VPS используйте один и тот же контейнерный сценарий. Docker Desktop нужен только на рабочей машине; на VPS нужен Docker Engine и Compose plugin.
+Use the same container setup on your laptop and on a VPS. Docker Desktop is only needed on your own machine; a VPS needs just Docker Engine and the Compose plugin.
 
-### Запуск через Docker Compose
+### Running with Docker Compose
 
-Docker Compose поднимает production-контейнер одной командой и устанавливает системные зависимости, включая ffmpeg:
+Docker Compose brings up a production-style container with one command and installs the system dependencies for you, ffmpeg included:
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Открыть: **http://localhost:8000**
+Open **http://localhost:8000**
 
-Кроме самого приложения это поднимает `redis` (очередь задач) и `worker`
-(отдельный процесс, который выполняет анализ и Growth Copilot — без него
-задачи будут ставиться в очередь, но никогда не завершатся).
+Besides the app itself, this starts `redis` (the task queue) and `worker` (a separate process that runs the analysis and Growth Copilot). Without the worker, tasks get queued but never finish.
 
-Этот вариант запускает базовый `linux/amd64`-образ с готовой Linux wheel Essentia TensorFlow, но без тяжёлых RAG-зависимостей. Чтобы включить RAG, остановите базовый сервис и запустите профиль (с воркером — `worker-rag`, а не `worker`):
+This variant runs the base `linux/amd64` image, which has a ready-made Linux wheel of Essentia TensorFlow but none of the heavy RAG dependencies. To turn RAG on, stop the base service and start the profile (with `worker-rag` instead of `worker`):
 
 ```bash
 docker compose down
 docker compose --profile rag up --build muse-analyse-rag worker-rag
 ```
 
-После добавления PDF в `data/knowledge/` постройте RAG-индекс в отдельном профиле:
+After you add PDFs to `data/knowledge/`, build the RAG index in the same profile:
 
 ```bash
 docker compose --profile rag run --rm muse-analyse-rag python scripts/index_knowledge.py
 ```
 
-Индекс хранится в именованном Docker volume `muse-analyse_rag_index` и переживает пересоздание контейнера. Для остановки:
+The index lives in the named Docker volume `muse-analyse_rag_index`, so it survives container re-creation. To stop everything:
 
 ```bash
 docker compose down
 ```
 
-Для удаления индекса вместе с volume используйте `docker compose down -v`.
+To delete the index along with the volume, use `docker compose down -v`.
 
-### Локальная установка без Docker
+### Local setup without Docker
 
-Этот режим предназначен для разработки и может требовать отдельной установки Essentia и ffmpeg. Для production используйте Compose выше.
+This mode is meant for development, and you may have to install Essentia and ffmpeg yourself. For production, use the Compose setup above.
 
-#### Системные зависимости (macOS)
+#### System dependencies (macOS)
 
 ```bash
 brew install ffmpeg
 ```
 
-#### Python-окружение
+#### Python environment
 
 ```bash
 cd /path/to/muse-analyse
@@ -114,9 +120,9 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### Установка Essentia на macOS
+#### Installing Essentia on macOS
 
-#### Рекомендуется: Conda
+#### Recommended: Conda
 
 ```bash
 conda create -n muse-analyse python=3.10
@@ -125,82 +131,79 @@ conda install -c conda-forge essentia
 pip install -r requirements.txt
 ```
 
-#### Или: pip (если работает для вашей версии Python)
+#### Or: pip (if it works for your Python version)
 
 ```bash
 pip install essentia
 ```
 
-**Проверка:**
+**Check that it works:**
 ```bash
 python -c "import essentia; print(essentia.__version__)"
 ```
 
-#### Настройка
+#### Configuration
 
 ```bash
 cp .env.example .env
-# Отредактируйте .env — выберите провайдер и добавьте ключи (опционально)
+# Edit .env: pick a provider and add keys (optional)
 ```
 
-#### Запуск
+#### Running
 
-Анализ и Growth Copilot выполняются в отдельном процессе-воркере — без него
-запросы будут ставиться в очередь и никогда не завершатся. Нужны Redis
-(`brew install redis && redis-server` на macOS, либо `docker run -p 6379:6379 redis:7-alpine`)
-и два процесса — сервер и воркер:
+Analysis and Growth Copilot run in a separate worker process. Without it, requests are queued and never finish. You need Redis (`brew install redis && redis-server` on macOS, or `docker run -p 6379:6379 redis:7-alpine`) and two processes, the server and the worker:
 
 ```bash
 source .venv/bin/activate
 
-# Терминал 1: сервер
+# Terminal 1: the server
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
 
-# Терминал 2: воркер
+# Terminal 2: the worker
 celery -A app.tasks worker --loglevel=info
 ```
 
-Открыть: **http://localhost:8000**
+Open **http://localhost:8000**
 
-#### RAG — индексация учебника
+#### RAG: indexing the textbook
 
-В каталоге `data/knowledge/` уже лежит учебник «Теория современной композиции». Для первого запуска постройте векторный индекс:
+The textbook *Теория современной композиции* is already in `data/knowledge/`. On the first run, build the vector index:
 
 ```bash
 pip install chromadb pymupdf sentence-transformers
 python scripts/index_knowledge.py
 ```
 
-Проверка статуса:
+Check the status:
 
 ```bash
 python scripts/index_knowledge.py --status
 ```
 
-При первом запуске скачается мультиязычная модель эмбеддингов (~470 МБ). Индекс сохраняется в `data/rag_index/`.
+The first run downloads a multilingual embedding model (~470 MB). The index is saved to `data/rag_index/`.
 
-Чтобы добавить другие учебники — положите PDF в `data/knowledge/` и выполните:
+To add other textbooks, put the PDFs in `data/knowledge/` and run:
 
 ```bash
 python scripts/index_knowledge.py --force
 ```
 
-Отключить RAG: `RAG_ENABLED=false` в `.env`.
+To switch RAG off, set `RAG_ENABLED=false` in `.env`.
 
 ---
 
-## LLM Провайдеры
+## LLM providers
 
-По умолчанию используется **OpenAI**, но вы можете выбрать любого из четырёх:
+**OpenAI** is used by default, but you can pick any of the four:
 
-| Провайдер | Конфиг | Стоимость | Лучше для |
-|-----------|--------|----------|----------|
-| **OpenAI** | `LLM_PROVIDER=openai` | Платно | Быстрый старт, высокое качество |
-| **Claude** | `LLM_PROVIDER=claude` | Платно | Глубокий анализ, структурированность |
-| **Ollama** | `LLM_PROVIDER=ollama` | Бесплатно | Приватность, локальный запуск |
-| **Nemotron** | `LLM_PROVIDER=nemotron` | Платно / Free tier | GPU оптимизация |
+| Provider | Config | Cost | Best for |
+|----------|--------|------|----------|
+| **OpenAI** | `LLM_PROVIDER=openai` | Paid | A quick start, high quality |
+| **Claude** | `LLM_PROVIDER=claude` | Paid | Deep analysis, well-structured answers |
+| **Ollama** | `LLM_PROVIDER=ollama` | Free | Privacy, running locally |
+| **Nemotron** | `LLM_PROVIDER=nemotron` | Paid / free tier | GPU optimisation |
 
-**Подробная настройка:** см. [LLM_PROVIDERS.md](LLM_PROVIDERS.md)
+**Detailed setup:** see [LLM_PROVIDERS.md](LLM_PROVIDERS.md)
 
 ---
 
@@ -208,7 +211,7 @@ python scripts/index_knowledge.py --force
 
 ### `GET /api/health`
 
-Проверка состояния, доступности Essentia и LLM провайдеров.
+Reports the app's status, whether Essentia is available, and which LLM providers are ready.
 
 ```json
 {
@@ -224,9 +227,13 @@ python scripts/index_knowledge.py --force
 }
 ```
 
+### `GET /healthz`
+
+A lightweight "is the process alive?" check, meant for Kubernetes probes. It asks nothing outside the process (no Ollama, RAG or Redis), so it answers right away. Returns `{"status": "ok"}`.
+
 ### `GET /api/providers`
 
-Список доступных LLM провайдеров.
+The list of available LLM providers.
 
 ```json
 {
@@ -242,54 +249,33 @@ python scripts/index_knowledge.py --force
 
 ### `POST /api/analyze`
 
-Загружает аудиофайл и ставит анализ в очередь (Celery) — Essentia-анализ и
-генерация обзора могут занимать десятки секунд и выполняются в отдельном
-воркер-процессе, а не внутри самого запроса.
+Uploads an audio file and queues its analysis in Celery. Essentia analysis and review generation can take tens of seconds, so they run in a separate worker process instead of inside the request.
 
-**Запрос:**
+**Request:**
 ```bash
 curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze
 ```
 
-**Ответ (сразу):**
+**Response (immediate):**
 ```json
 {"task_id": "d8805c13-27b5-4be0-83f6-35996314c93a"}
 ```
 
 ### `GET /api/tasks/{task_id}`
 
-Статус и результат фоновой задачи — опрашивайте, пока `status` не станет
-`done` или `error`.
+The status and result of a background task. Poll it until `status` becomes `done` or `error`.
 
 ```bash
 curl http://localhost:8000/api/tasks/d8805c13-27b5-4be0-83f6-35996314c93a
 ```
 
+While the task is still running:
+
 ```json
 {"status": "pending"}
 ```
 
-### Запуск MCP-инструмента (локально, пример)
-
-Если вы хотите вызвать внутреннюю обёртку `mcp_server.py` (не требует запуска FastMCP транспорта):
-
-```bash
-# В одном терминале запустите API (см. выше):
-source .venv/bin/activate
-uvicorn app.main:app --host 127.0.0.1 --port 8000
-
-# В другом терминале выполните анализ файла через инструмент:
-python -c "from mcp_server import analyze_audio; print(analyze_audio('/absolute/path/to/track.mp3'))"
-```
-
-Если хотите запустить interactive FastMCP transport (stdin/stdout) для интеграции с внешними менеджерами MCP, используйте:
-
-```bash
-# Запуск FastMCP (пример):
-python mcp_server.py
-```
-
-**Ответ (когда готово, `status: "done"`):**
+**Response when it is finished (`status: "done"`):**
 
 ```json
 {
@@ -316,64 +302,83 @@ python mcp_server.py
 }
 ```
 
-Growth Copilot (`POST /api/growth/start`, `POST /api/growth/select`) устроен
-так же: запрос сразу возвращает `task_id`, результат — через тот же
-`GET /api/tasks/{task_id}`.
+Growth Copilot (`POST /api/growth/start`, `POST /api/growth/select`) works the same way: the request returns a `task_id` right away, and the result comes from the same `GET /api/tasks/{task_id}`.
+
+### Calling the MCP tools (locally, an example)
+
+If you want to call the `mcp_server.py` wrapper directly (this does not need the FastMCP transport). The `analyze_audio` tool waits for the background analysis to finish (up to 5 minutes by default; change it with `MUSE_ANALYSIS_TIMEOUT`), so the worker has to be running too:
+
+```bash
+# In one terminal, start the API (see above):
+source .venv/bin/activate
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# In another terminal, analyse a file through the tool:
+python -c "from mcp_server import analyze_audio; print(analyze_audio('/absolute/path/to/track.mp3'))"
+```
+
+To run the interactive FastMCP transport (stdin/stdout) for use with external MCP clients:
+
+```bash
+# Start FastMCP (example):
+python mcp_server.py
+```
 
 ---
 
-## Примеры использования
+## What gets extracted
 
-| Категория | Признаки |
-|-----------|----------|
-| **Ритм** | BPM, уверенность бита, количество ударов, onset rate, beat loudness |
-| **Тональность** | Тоника, лад (мажор/минор), сила тональности, строй (Гц), аккорды |
-| **Динамика** | LUFS (EBU R128), громкость по Стивенсу (не дБ), динамическая сложность, RMS, replay gain |
-| **Спектр** | Спектральный центроид, яркость, rolloff, flux, zero-crossing rate, MFCC |
-| **Прочее** | Танцевальность (Danceability), энергия (композитная оценка 0–1) |
-
----
-
-## OpenAI (опционально)
-
-Если в `.env` задан `OPENAI_API_KEY`, обзоры генерируются через ChatGPT (`OPENAI_MODEL`, по умолчанию `gpt-4o-mini`).
-
-Без ключа приложение работает полностью — используется встроенный шаблонный генератор обзоров на русском языке.
+| Category | Features |
+|----------|----------|
+| **Rhythm** | BPM, beat confidence, number of beats, onset rate, beat loudness |
+| **Tonality** | Tonic, mode (major/minor), key strength, tuning (Hz), chords |
+| **Dynamics** | LUFS (EBU R128), Stevens loudness (not dB), dynamic complexity, RMS, replay gain |
+| **Spectrum** | Spectral centroid, brightness, rolloff, flux, zero-crossing rate, MFCC |
+| **Other** | Danceability, energy (a composite score from 0 to 1) |
 
 ---
 
-## Ограничения
+## OpenAI (optional)
 
-- При локальном запуске **Essentia на macOS** может потребовать отдельную установку; контейнерный VPS-сценарий использует готовую Linux x86_64 wheel.
-- Docker решает проблему системных зависимостей только внутри Linux-контейнера; для Docker Desktop нужен доступный объём памяти и диска.
-- Образы целенаправленно собираются под `linux/amd64`, что соответствует большинству VPS; на ARM Mac Docker Desktop использует эмуляцию и сборка может быть медленнее.
-- Образ крупный: Essentia, ffmpeg и модель эмбеддингов RAG увеличивают время сборки и первый запуск.
-- Для VPS используется зафиксированная wheel `essentia-tensorflow` под Linux x86_64 и Python 3.11; другие архитектуры потребуют отдельной сборки или другой версии пакета.
-- При первом обращении к RAG модель эмбеддингов может скачиваться из сети; без сети RAG-индексация не завершится.
-- Docker Compose не запускает Ollama автоматически: для Ollama нужен отдельный сервис/хост и корректный `OLLAMA_BASE_URL`.
-- Загруженные аудиофайлы находятся во временной файловой системе контейнера и удаляются после анализа; это не хранилище исходников.
-- Для публичного deployment нужно отдельно настроить reverse proxy, TLS, аутентификацию, лимиты запросов и управление секретами.
-- **Анализ длинных треков** (>5 мин) может занимать значительное время.
-- При локальном запуске **MP3/M4A** требуют установленного ffmpeg; в Docker-образ он включён.
-- Загруженные файлы **удаляются сразу после анализа** (не сохраняются на диске).
-- Оценка «энергии» — **прокси-метрика** на основе RMS, BPM, яркости и танцевальности (Essentia не имеет прямого алгоритма «energy» как Spotify).
-- AI-обзор без API — **шаблонный**, не заменяет живого критика.
+If `OPENAI_API_KEY` is set in `.env`, reviews are generated with ChatGPT (`OPENAI_MODEL`, `gpt-4o-mini` by default).
+
+Without a key the app still works fully: it falls back to the built-in template review generator (in Russian).
+
+---
+
+## Limitations
+
+- When you run **Essentia on macOS** locally, you may have to install it separately. The container setup for a VPS uses a ready-made Linux x86_64 wheel instead.
+- Docker only solves the system-dependency problem inside the Linux container. Docker Desktop still needs enough memory and disk.
+- The images are deliberately built for `linux/amd64`, which matches most VPSes. On an ARM Mac, Docker Desktop uses emulation and builds can be slower.
+- The image is big: Essentia, ffmpeg and the RAG embedding model make the build and the first start slow.
+- A VPS uses the pinned `essentia-tensorflow` wheel for Linux x86_64 and Python 3.11. Other architectures need a separate build or a different package version.
+- On first use, RAG may download the embedding model from the network. Without network access, RAG indexing will not finish.
+- Docker Compose does not start Ollama for you. Ollama needs its own service or host and a correct `OLLAMA_BASE_URL`.
+- Uploaded audio files go to a temporary volume shared by the web container and the worker, and are **deleted right after analysis**. This is not storage for your source files.
+- For a public deployment you still have to set up a reverse proxy, TLS, authentication, rate limits and secret management yourself.
+- **Long tracks** (over 5 minutes) can take a noticeable amount of time to analyse.
+- When running locally, **MP3/M4A** need ffmpeg installed. The Docker image already includes it.
+- The "energy" score is a **proxy metric** built from RMS, BPM, brightness and danceability (Essentia has no direct "energy" algorithm the way Spotify does).
+- Without an API, the AI review is a **template**. It is no substitute for a human critic.
 
 ---
 
 ## Troubleshooting
 
-| Проблема | Решение |
-|----------|---------|
-| `Essentia не установлена` | Проверьте `docker compose logs muse-analyse`; для локального запуска см. раздел установки Essentia выше |
-| `Не удалось загрузить аудио` | В Docker ffmpeg уже включён; при локальном запуске установите `brew install ffmpeg` |
-| `Пустой файл` / `повреждён` | Проверьте целостность аудиофайла |
-| OpenAI ошибка | Проверьте ключ; приложение автоматически переключится на шаблон |
+The app's own messages are in Russian, so they are quoted as-is below.
+
+| Problem | Solution |
+|---------|----------|
+| `Essentia не установлена` ("Essentia is not installed") | Check `docker compose logs muse-analyse`; for a local run, see the Essentia installation section above |
+| `Не удалось загрузить аудио` ("Could not load the audio") | ffmpeg is already in the Docker image; for a local run, install it with `brew install ffmpeg` |
+| `Пустой файл` / `повреждён` ("Empty file" / "damaged") | Check that the audio file is intact |
+| OpenAI error | Check the key; the app falls back to the template review automatically |
 
 ---
 
-## Лицензия
+## License
 
 MIT.
 
-Essentia распространяется под лицензией AFFERO GPL v3.
+Essentia is distributed under the Affero GPL v3 license.

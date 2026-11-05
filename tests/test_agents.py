@@ -1,4 +1,4 @@
-"""Тесты агентов Growth Copilot на LangChain без реальных вызовов LLM."""
+"""Tests for the Growth Copilot agents on LangChain, with no real LLM calls."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from app.agents.voice_agent import voice_agent
 
 @pytest.fixture
 def fake_llm(monkeypatch):
-    """Подменяет обе точки входа в LLM; возвращает функцию для настройки ответа."""
+    """Replaces both LLM entry points; returns a function for setting the answer."""
 
     def install(structured_response: Any = None, text: str = "") -> SimpleNamespace:
         seen_prompts: list[str] = []
@@ -70,7 +70,7 @@ def test_voice_agent_uses_structured_output(fake_llm):
     result = voice_agent(GrowthState(artist_materials=["текст {про} море"]))
 
     assert result["voice_profile"] == expected
-    # Фигурные скобки из данных артиста не ломают шаблон и попадают в промпт как есть.
+    # Curly braces in the artist's data do not break the template, and end up in the prompt as they are.
     assert "текст {про} море" in model.seen_prompts[0]
 
 
@@ -126,7 +126,7 @@ def test_trend_agent_merges_search_urls_with_model_urls(monkeypatch, fake_llm):
     context = trend_agent(GrowthState())["trend_context"]
 
     assert context.active_playlists == ["X"]
-    assert context.source_urls == ["https://a.example", "https://b.example"]  # без дублей
+    assert context.source_urls == ["https://a.example", "https://b.example"]  # no duplicates
 
 
 def test_critique_agent_parses_boolean(fake_llm):

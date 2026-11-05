@@ -1,5 +1,5 @@
-# Патч поверх Deployment web: добавляет тома RAG и поднимает лимит памяти.
-# Контейнеры мерджатся по имени (web), тома — по name, монтирования — по пути.
+# A patch on top of the web Deployment: adds the RAG volumes and raises the memory limit.
+# Containers are merged by name (web), volumes by name, mounts by path.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,8 +14,8 @@ spec:
               mountPath: /app/data/rag_index
             - name: hf-cache
               mountPath: /app/data/hf-cache
-          # Замер на macOS: веб-процесс с RAG ~350 МБ (модель эмбеддингов в нём
-          # не загружается — она грузится только в воркере при запросе).
+          # Measured on macOS: the web process with RAG takes ~350 MB (the embedding model
+          # is not loaded in it; only the worker loads it, when a request comes in).
           resources:
             requests:
               memory: 384Mi

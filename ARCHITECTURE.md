@@ -1,75 +1,81 @@
-# Архитектура Muse Analyse
+# Muse Analyse architecture
 
-## Общая схема
+## Overview
 
 ```
                     ┌─────────────────────┐
-                    │    Веб-интерфейс    │
+                    │       Web UI        │
                     │   (index.html +     │
-                    │    app.js/css)      │
+                    │    app.js / css)    │
                     └──────────┬──────────┘
                                │ HTTP
                                ▼
                     ┌─────────────────────┐
-                    │   FastAPI сервер    │
+                    │   FastAPI server    │
                     │   (main.py)         │
-                    └──────────┬──────────┘
-                               │
-                ┌──────────────┼──────────────┐
-                │              │              │
-                ▼              ▼              ▼
-          ┌─────────────┐ ┌──────────┐ ┌────────────┐
-          │ Essentia    │ │ LLM      │ │ Config     │
-          │ Audio       │ │Providers │ │ Management │
-          │ Analysis    │ │ Factory  │ │            │
-          │ (python)    │ │ (python) │ │            │
-          └─────────────┘ └──────────┘ └────────────┘
-                │              │
-                │              │
-    ┌───────────┘              └───────────────┬──────────┬──────────┐
-    │                                         │          │          │
-    ▼                                         ▼          ▼          ▼
-  Аудио                                   OpenAI    Claude    Ollama
-  файл                                    API       API       (local)
-                                                                │
-                                                   ┌───────────┴──────────┐
-                                                   │                      │
-                                                   ▼                      ▼
-                                                Nemotron              Шаблон
-                                                  API              (fallback)
+                    └───┬─────────────┬───┘
+                        │             │ queues a task, then reads its result
+                        │             ▼
+                        │       ┌───────────┐         ┌────────────────────┐
+                        │       │   Redis   │ ◄─────► │   Celery worker    │
+                        │       │  (queue)  │         │    (tasks.py)      │
+                        │       └───────────┘         └─────────┬──────────┘
+                        │                                       │
+                        ▼                 ┌─────────────────────┼─────────────────┐
+                  Config (.env)           ▼                     ▼                 ▼
+                                    Essentia audio         LLM providers      RAG index
+                                       analysis            (OpenAI, Claude,   (ChromaDB)
+                                                            Ollama, Nemotron,
+                                                            or the template
+                                                            fallback)
 ```
 
-## Компоненты
+The web server never does the heavy work itself. It saves the upload, queues a task and answers right away; the worker does the analysis and the LLM calls.
+
+## Components
 
 ### 1. **Frontend** (`static/`)
 
-- **index.html** — главная страница с интерфейсом загрузки
-- **app.js** — логика взаимодействия с API (drag-drop, отправка файлов, отображение результатов)
-- **style.css** — оформление (тёмная тема, адаптивный дизайн)
+- **index.html**: the main page with the upload interface
+- **app.js**: the logic that talks to the API (drag & drop, sending files, polling for the result, showing it)
+- **style.css**: styling (dark theme, responsive layout)
 
 ### 2. **Backend** (`app/`)
 
-#### `main.py` — FastAPI приложение
+#### `main.py`: the FastAPI application
 
-Основные эндпоинты:
-- `GET /` — возвращает index.html
-- `GET /api/health` — статус системы (Essentia, LLM провайдеры)
-- `GET /api/providers` — список доступных LLM провайдеров
-- `POST /api/analyze` — основной эндпоинт для анализа аудио
+Main endpoints:
+- `GET /`: returns index.html
+- `GET /healthz`: a lightweight "is the process alive?" check for Kubernetes probes
+- `GET /api/health`: system status (Essentia, LLM providers, RAG)
+- `GET /api/providers`: the list of available LLM providers
+- `POST /api/analyze`: uploads audio and queues its analysis; returns a `task_id`
+- `GET /api/tasks/{task_id}`: the status and result of a background task
+- `POST /api/growth/start`, `POST /api/growth/select`, `GET /api/growth/status/{thread_id}`: Growth Copilot
 
 ```python
-# Поток обработки запроса:
-# 1. Валидация файла (расширение, размер)
-# 2. Сохранение в временную папку
-# 3. analyze_audio() → признаки Essentia
-# 4. generate_review() → обзор от LLM
-# 5. Удаление временного файла
-# 6. Возврат результата JSON
+# How a request is handled:
+# 1. Validate the file (extension, size)
+# 2. Save it to the shared uploads directory
+# 3. Queue a Celery task and return its task_id
+# The worker then runs, in the background:
+# 4. analyze_audio()   -> Essentia features
+# 5. generate_review() -> a review from the LLM
+# 6. Delete the temporary file
+# The browser polls GET /api/tasks/{task_id} until the result is ready.
 ```
 
-#### `audio_analysis.py` — Essentia анализ
+#### `tasks.py`: the Celery app and background tasks
 
-Функция `analyze_audio(file_path)` возвращает словарь с параметрами:
+Holds the three tasks (`analyze_track`, `growth_start`, `growth_select`). Redis is the broker and result store. The Growth Copilot graph state is kept in a SQLite file on a volume shared by the web process and the worker.
+
+#### `agents/`: Growth Copilot
+
+A LangGraph graph made of several LLM agents (voice, trend, ideation, draft, critique). It runs until the artist has to pick ideas, then resumes with that choice.
+
+#### `audio_analysis.py`: Essentia analysis
+
+The function `analyze_audio(file_path)` returns a dict of parameters:
 
 ```python
 {
@@ -90,7 +96,7 @@
     },
     "dynamics": {
         "loudness_ebu128_lufs": -9.5,
-        "loudness_db": -6.2,
+        "loudness_stevens_power": 10448.87,
         "dynamic_complexity": 0.38,
         "rms": 0.156
     },
@@ -105,9 +111,9 @@
 }
 ```
 
-#### `llm_providers.py` — Фабрика LLM провайдеров
+#### `llm_providers.py`: the LLM provider factory
 
-Архитектура провайдеров:
+How the providers are organised:
 
 ```python
 LLMProvider (ABC)
@@ -117,113 +123,121 @@ LLMProvider (ABC)
 └── NemotronProvider
 
 LLMProviderFactory
-├── get_provider(name) → инстанс провайдера
+├── get_provider(name) → a provider instance
 └── list_available_providers() → dict[str, bool]
 ```
 
-Каждый провайдер:
-- Реализует `is_available()` — проверка наличия ключей/доступности
-- Реализует `build_chat_model()` — создаёт LangChain chat-модель (`ChatOpenAI`, `ChatAnthropic`, `ChatOllama`)
-- Наследует `structured_model(schema)` — модель, возвращающая объект Pydantic вместо текста
+Every provider:
+- implements `is_available()`, which checks that the keys exist or the service is reachable
+- implements `build_chat_model()`, which creates a LangChain chat model (`ChatOpenAI`, `ChatAnthropic`, `ChatOllama`)
+- inherits `structured_model(schema)`, a model that returns a Pydantic object instead of text
 
-Сам вызов API, разбор ответа и валидацию схемы выполняет LangChain (`with_structured_output`).
+LangChain (`with_structured_output`) does the actual API call, parses the answer and validates the schema.
 
-#### `review_generator.py` — Генерация обзоров
+#### `review_generator.py`: review generation
 
-Функция `generate_review(features)`:
-
-```
-1. Попытка получить провайдер через LLMProviderFactory
-2. Если успешно → цепочка `ChatPromptTemplate | provider.structured_model(TrackReview)`
-3. Если провайдера нет или вызов не удался → fallback на _build_template_review()
-4. Всегда возвращает структурированный обзор
-```
-
-Обзор содержит:
-- `source` — откуда пришёл ("openai", "claude", "ollama", "nemotron", "template")
-- `model` — название модели
-- `language` — "ru" (русский)
-- `score` — 1-10
-- `sections` — структурированные части (summary, rhythm, tonality, production, verdict)
-- `full_text` — полный текст обзора
-
-#### `config.py` — Конфигурация
-
-Загружает из .env:
-- LLM_PROVIDER — выбранный провайдер
-- Ключи API для каждого провайдера
-- URL/модели для каждого провайдера
-- Параметры LLM (temperature, max_tokens)
-- Параметры сервера (HOST, PORT)
-
-## Поток данных для анализа трека
+The function `generate_review(features)`:
 
 ```
-Пользователь загружает MP3
+1. Try to get a provider from LLMProviderFactory
+2. If that works → run the chain `ChatPromptTemplate | provider.structured_model(TrackReview)`
+3. If there is no provider, or the call fails → fall back to _build_template_review()
+4. Always return a structured review
+```
+
+A review contains:
+- `source`: where it came from ("openai", "claude", "ollama", "nemotron" or "template")
+- `model`: the model name
+- `language`: "ru" (Russian)
+- `score`: 1 to 10
+- `sections`: the structured parts (summary, rhythm, tonality, production, verdict)
+- `full_text`: the full text of the review
+
+#### `config.py`: configuration
+
+Loads from .env:
+- LLM_PROVIDER: the chosen provider
+- The API keys for each provider
+- The URL and model for each provider
+- LLM parameters (temperature, max_tokens)
+- Server parameters (HOST, PORT)
+- Redis and Celery settings
+
+## Data flow for analysing a track
+
+```
+The user uploads an MP3
     │
     ▼
-Валидация (формат, размер)
+Validation (format, size)
     │
     ▼
-Сохранение в /uploads/
+The file is saved to the shared /uploads volume
     │
     ▼
-Essentia анализ (45-120 сек в зависимости от длины)
-    │
-    ├─→ Спектральный анализ
-    ├─→ Ритмический анализ
-    ├─→ Тональный анализ
-    ├─→ Динамический анализ
-    └─→ Энергия и прочее
+A Celery task is queued; the server answers with a task_id
+(the browser polls GET /api/tasks/{task_id})
     │
     ▼
-Получение словаря признаков
+The worker picks the task up
+    │
+    ▼
+Essentia analysis (seconds to a minute or two, depending on track length and machine)
+    │
+    ├─→ Spectral analysis
+    ├─→ Rhythm analysis
+    ├─→ Tonal analysis
+    ├─→ Dynamics analysis
+    └─→ Energy and the rest
+    │
+    ▼
+We now have a dict of features
     │
     ▼
 LLMProviderFactory.get_provider()
     │
-    ├─→ Если доступен выбранный → используем его
-    │   ├─→ OpenAI: POST к api.openai.com
-    │   ├─→ Claude: POST к api.anthropic.com
-    │   ├─→ Ollama: POST к localhost:11434
-    │   └─→ Nemotron: POST к NVIDIA API
+    ├─→ If the chosen provider is available → use it
+    │   ├─→ OpenAI: a request to api.openai.com
+    │   ├─→ Claude: a request to api.anthropic.com
+    │   ├─→ Ollama: a request to localhost:11434
+    │   └─→ Nemotron: a request to the NVIDIA API
     │
-    └─→ Если недоступен → fallback к шаблону
-    │
-    ▼
-Получение структурированного обзора (JSON)
+    └─→ If it is not available → fall back to the template
     │
     ▼
-Удаление временного файла
+We get a structured review (JSON)
     │
     ▼
-Возврат JSON с features + review
+The temporary file is deleted
     │
     ▼
-Frontend отображает результат
+The result (features + review) is stored for the polling request
+    │
+    ▼
+The frontend shows it
 ```
 
-## Определение провайдера
+## Choosing the provider
 
 ```python
-# В config.py:
-LLM_PROVIDER = "openai"  # можно изменить на claude, ollama, nemotron
+# In config.py:
+LLM_PROVIDER = "openai"  # can be changed to claude, ollama or nemotron
 
-# При запуске:
+# When a review is generated:
 def generate_review(features):
     try:
-        provider = LLMProviderFactory.get_provider()  # читает LLM_PROVIDER
+        provider = LLMProviderFactory.get_provider()  # reads LLM_PROVIDER
     except ValueError:
-        # Провайдер недоступен или ключи не установлены
+        # The provider is not available, or its keys are not set
         return _build_template_review(features)
-    # ... LLM-цепочка; при ошибке — шаблон с полем llm_error
+    # ... the LLM chain; if it fails, a template review with an llm_error field
 ```
 
-## Расширение архитектуры
+## Extending the architecture
 
-### Добавить новый LLM провайдер
+### Adding a new LLM provider
 
-1. **Создать класс в `llm_providers.py`:**
+1. **Create a class in `llm_providers.py`:**
 ```python
 class MyLLMProvider(LLMProvider):
     name = "my_llm"
@@ -236,11 +250,11 @@ class MyLLMProvider(LLMProvider):
         return bool(self.api_key)
 
     def build_chat_model(self):
-        from langchain_openai import ChatOpenAI  # или любой другой LangChain-класс
+        from langchain_openai import ChatOpenAI  # or any other LangChain class
         return ChatOpenAI(model=self.model, api_key=self.api_key, base_url="https://...")
 ```
 
-2. **Зарегистрировать в фабрике:**
+2. **Register it in the factory:**
 ```python
 class LLMProviderFactory:
     _providers = {
@@ -248,77 +262,80 @@ class LLMProviderFactory:
         "claude": ClaudeProvider,
         "ollama": OllamaProvider,
         "nemotron": NemotronProvider,
-        "my_llm": MyLLMProvider,  # ← добавить здесь
+        "my_llm": MyLLMProvider,  # ← add it here
     }
 ```
 
-3. **Добавить конфиг в `config.py`:**
+3. **Add its settings to `config.py`:**
 ```python
 MY_API_KEY = os.getenv("MY_API_KEY", "").strip()
 MY_MODEL = os.getenv("MY_MODEL", "default-model")
 ```
 
-4. **Обновить `.env.example`**
+4. **Update `.env.example`**
 
-### Добавить новый признак Essentia
+### Adding a new Essentia feature
 
-1. **Добавить в `audio_analysis.py`:**
+1. **Add it to `audio_analysis.py`:**
 ```python
 def _new_feature(audio):
-    # вычисление параметра
+    # compute the parameter
     return value
 
 result = analyze_audio(path)
 result["new_feature"] = _new_feature(audio)
 ```
 
-2. **Обновить `_compact_features` и промпт в `review_generator.py`** для учёта нового признака
+2. **Update `_compact_features` and the prompt in `review_generator.py`** so the new feature is taken into account
 
 ---
 
-## Тестирование
+## Testing
 
-### Проверить состояние
+### Check the status
 ```bash
 curl http://localhost:8000/api/health
 ```
 
-### Проверить провайдеры
+### Check the providers
 ```bash
 curl http://localhost:8000/api/providers
 ```
 
-### Анализировать трек
+### Analyse a track
 ```bash
-curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze | jq .
+# Returns {"task_id": "..."}
+curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze
+
+# Then ask for the result (repeat until "status" is "done"):
+curl http://localhost:8000/api/tasks/<task_id> | jq .
 ```
 
-### Тестовый скрипт
+### Test script
 ```bash
-python examples_test_providers.py track.mp3
+python examples/test_providers.py track.mp3
 ```
 
 ---
 
-## Производительность
+## Performance
 
-| Операция | Время |
-|----------|-------|
-| Essentia анализ (3 мин трека) | 45-120 сек |
-| OpenAI API ответ | 5-15 сек |
-| Claude API ответ | 10-20 сек |
-| Ollama ответ (mistral) | 15-45 сек |
-| Nemotron API ответ | 10-30 сек |
-| **Итого** | **60-180 сек** |
+| Operation | Time |
+|-----------|------|
+| Essentia analysis (3-4 minute track) | a few seconds on a recent laptop (we measured ~5 s); expect more on a small VPS |
+| OpenAI API response | 5-15 s |
+| Claude API response | 10-20 s |
+| Ollama response (mistral) | 15-45 s |
+| Nemotron API response | 10-30 s |
 
-Самый медленный этап — Essentia (аудио файл обрабатывается полностью).
+The LLM call is usually the slowest part now, and with a local Ollama model it dominates the total time. The API figures are rough, typical values; measure your own setup.
 
 ---
 
-## Безопасность
+## Security
 
-- Все загруженные файлы удаляются после анализа
-- Поддержка лимитов размера файла (по умолчанию 50 МБ)
-- Валидация расширений файлов
-- Нет хранения истории анализов на сервере
-- При использовании Ollama — данные не выходят из локальной сети
+- Every uploaded file is deleted after analysis
+- File size is limited (50 MB by default)
+- File extensions are validated
+- The server keeps no history of analyses
+- With Ollama, your data never leaves your local network

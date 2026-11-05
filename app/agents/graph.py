@@ -1,4 +1,4 @@
-"""Граф Growth Copilot на LangGraph."""
+"""The Growth Copilot graph, built on LangGraph."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 try:
     from langgraph.graph import END, START, StateGraph
     from langgraph.types import Command, interrupt
-except ImportError:  # Доступность проверяется при установке requirements.txt.
+except ImportError:  # Availability is checked when requirements.txt is installed.
     StateGraph = None  # type: ignore[assignment,misc]
     START = END = None  # type: ignore[assignment]
     Command = Any  # type: ignore[assignment,misc]
@@ -27,14 +27,14 @@ logger = logging.getLogger(__name__)
 
 
 def extract_audio_features(state: GrowthState) -> dict[str, object]:
-    """Переиспользует существующий Essentia-анализ."""
+    """Reuses the existing Essentia analysis."""
     if not state.audio_path:
         raise ValueError("В состоянии не указан путь к аудиофайлу")
     return {"audio_features": analyze_audio(state.audio_path)}
 
 
 def selection_interrupt(state: GrowthState) -> dict[str, list[str]]:
-    """Останавливает граф и принимает IDs выбранных артистом идей."""
+    """Pauses the graph and takes the idea IDs the artist selected."""
     if interrupt is None:
         raise RuntimeError("LangGraph не установлен")
     selection = interrupt({"content_ideas": [idea.model_dump() for idea in state.content_ideas]})
@@ -49,14 +49,15 @@ def selection_interrupt(state: GrowthState) -> dict[str, list[str]]:
 
 
 def _build_checkpointer() -> Any:
-    """Хранилище состояния графа между шагами (`/api/growth/start` и `/api/growth/select`).
+    """Where the graph keeps its state between steps (`/api/growth/start` and `/api/growth/select`).
 
-    Эти два запроса могут выполняться в разных процессах — например, в разных
-    Celery-воркерах, — поэтому состояние не может жить только в памяти одного
-    процесса. SQLite-файл на общем томе (см. docker-compose.yml) делает его
-    общим между веб-процессом и воркером ценой одного файла, без отдельного
-    сервиса БД. Если файл недоступен (нет прав на каталог и т.п.), используется
-    MemorySaver — граф работает, но только в пределах одного процесса.
+    These two requests can be handled by different processes, for example by
+    different Celery workers, so the state cannot live only in one process's
+    memory. A SQLite file on a shared volume (see docker-compose.yml) lets the
+    web process and the worker share it for the price of one file, with no
+    separate database service. If the file is not available (no permission on
+    the directory and so on), we fall back to MemorySaver: the graph still works,
+    but only inside a single process.
     """
     try:
         import sqlite3
@@ -80,7 +81,7 @@ def _build_checkpointer() -> Any:
 
 
 def build_growth_graph() -> Any:
-    """Компилирует граф Growth Copilot."""
+    """Compiles the Growth Copilot graph."""
     if StateGraph is None:
         raise RuntimeError("Установите зависимости langgraph и langchain-core")
 

@@ -1,5 +1,5 @@
-# Веб-приложение (FastAPI + uvicorn). Аналог сервиса `muse-analyse`
-# из docker-compose.yml.
+# The web application (FastAPI + uvicorn). The equivalent of the `muse-analyse`
+# service in docker-compose.yml.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -10,8 +10,8 @@ metadata:
     app.kubernetes.io/part-of: muse-analyse
 spec:
   replicas: 1
-  # Recreate — по той же причине, что у Redis: тома uploads и growth-state
-  # подключаются одним узлом, два пода одновременно на обновлении не нужны.
+  # Recreate, for the same reason as Redis: the uploads and growth-state volumes
+  # are attached by one node, and two pods at once during an update are not needed.
   strategy:
     type: Recreate
   selector:
@@ -26,11 +26,11 @@ spec:
         app.kubernetes.io/part-of: muse-analyse
     spec:
       enableServiceLinks: false
-      # Образ запускается от пользователя appuser (uid 10001, см. Dockerfile).
-      # runAsUser нужен явно: в образе USER задан именем, а не числом, и без
-      # числа Kubernetes не может проверить runAsNonRoot.
-      # fsGroup: тома монтируются под root; fsGroup даёт группе 10001 право
-      # записи, иначе приложение не сможет создать файлы в /app/uploads.
+      # The image runs as the appuser user (uid 10001, see the Dockerfile).
+      # runAsUser has to be explicit: the image sets USER by name, not by number, and
+      # without a number Kubernetes cannot verify runAsNonRoot.
+      # fsGroup: volumes are mounted as root; fsGroup gives group 10001 write access,
+      # otherwise the app could not create files in /app/uploads.
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -39,18 +39,18 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          # Тот же образ, что собирает docker-compose (target: runtime).
-          # Для kind/minikube его загружают в кластер вручную, см. README.
+          # The same image that docker-compose builds (target: runtime).
+          # For kind/minikube you load it into the cluster by hand, see the README.
           image: muse-analyse:local
           imagePullPolicy: IfNotPresent
-          # Команду не переопределяем: берётся CMD из Dockerfile (uvicorn).
+          # We do not override the command: the CMD from the Dockerfile (uvicorn) is used.
           ports:
             - name: http
               containerPort: 8000
           envFrom:
             - configMapRef:
                 name: muse-config
-            # Секрет с ключами; optional — без него под всё равно стартует.
+            # The secret with the keys; optional, so the pod still starts without it.
             - secretRef:
                 name: muse-secrets
                 optional: true
@@ -63,24 +63,23 @@ spec:
               mountPath: /app/uploads
             - name: growth-state
               mountPath: /app/data/growth
-          # requests — сколько ресурсов "гарантируется" и по чему планировщик
-          # выбирает узел. limits.memory - это потолок: при превышении контейнер
-          # убивается (OOMKilled). Значения по замерам: ~220–350 МБ в покое;
-          # подстройте по `kubectl top pod`.
+          # requests is how many resources are "guaranteed", and what the scheduler uses
+          # to pick a node. limits.memory is a ceiling: a container that goes over it
+          # is killed (OOMKilled). The values come from measurements: ~220-350 MB at idle;
+          # adjust them using `kubectl top pod`.
           resources:
             requests:
               cpu: 100m
               memory: 256Mi
             limits:
               memory: 512Mi
-          # Пробы бьют в /healthz: он
-          # ничего не опрашивает и отвечает за доли миллисекунды. Подробный
-          # /api/health для этого не подходит: он при каждом вызове ходит в
-          # Ollama (таймаут 2 с) и в RAG, а при молчащей Ollama на эти 2 с
-          # замораживает весь веб-процесс (замерено), из-за чего проба
-          # могла бы "мигать".
-          # startupProbe даёт запуску до 3 минут (импорт TensorFlow/Essentia);
-          # liveness и readiness включаются только после него.
+          # Probes hit /healthz: it asks nothing and answers in a fraction of a
+          # millisecond. The detailed /api/health is not suitable for this: on every
+          # call it goes to Ollama (2 s timeout) and to RAG, and when Ollama is silent
+          # it freezes the whole web process for those 2 s (measured), so the probe
+          # could "flap".
+          # startupProbe gives startup up to 3 minutes (importing TensorFlow/Essentia);
+          # liveness and readiness only kick in after it.
           startupProbe:
             httpGet:
               path: /healthz
@@ -108,9 +107,9 @@ spec:
           persistentVolumeClaim:
             claimName: growth-state
 ---
-# Service — постоянный адрес для веб-пода внутри кластера (тип ClusterIP:
-# снаружи недоступен). Наружу его открывают port-forward-ом или Ingress-ом,
-# см. README.
+# A Service is a permanent address for the web pod inside the cluster (type ClusterIP:
+# not reachable from outside). It is exposed with port-forward or an Ingress,
+# see the README.
 apiVersion: v1
 kind: Service
 metadata:

@@ -1,4 +1,4 @@
-"""FastAPI-приложение Muse Analyse."""
+"""The Muse Analyse FastAPI application."""
 
 from __future__ import annotations
 
@@ -43,14 +43,14 @@ app = FastAPI(
 
 
 class GrowthSelection(BaseModel):
-    """Выбор карточек после паузы графа."""
+    """The artist's choice of idea cards after the graph pauses."""
 
     thread_id: str
     selected_idea_ids: list[str] = Field(min_length=1)
 
 
 class LLMSettingsPayload(BaseModel):
-    """Настройки провайдера LLM из веб-интерфейса."""
+    """LLM provider settings coming from the web UI."""
 
     provider: str = "openai"
     api_key: str = ""
@@ -62,7 +62,7 @@ if STATIC_DIR.exists():
 
 @app.get("/api/settings")
 async def get_llm_settings():
-    """Возвращает текущие runtime-настройки LLM."""
+    """Returns the current runtime LLM settings."""
     provider = get_runtime_llm_setting("LLM_PROVIDER", "openai")
     return {
         "provider": provider,
@@ -74,7 +74,7 @@ async def get_llm_settings():
 
 @app.post("/api/settings/llm")
 async def save_llm_settings(payload: LLMSettingsPayload):
-    """Сохраняет ключ API и выбранного провайдера через UI."""
+    """Saves the chosen provider and its API key from the UI."""
     provider = payload.provider.lower()
     if provider not in {"openai", "claude", "ollama", "nemotron"}:
         raise HTTPException(status_code=400, detail="Неподдерживаемый провайдер")
@@ -116,11 +116,11 @@ async def index():
 
 @app.get("/healthz")
 async def healthz():
-    """Лёгкая проверка "процесс жив и обслуживает запросы" для проб Kubernetes.
+    """A cheap "is the process alive and serving requests?" check, for Kubernetes probes.
 
-    Намеренно ничего не опрашивает (ни Ollama, ни RAG, ни Redis): сбой внешней
-    зависимости не должен приводить к перезапуску самого веб-процесса.
-    Подробный статус системы — в /api/health.
+    It deliberately asks nothing (no Ollama, no RAG, no Redis): a failing outside
+    dependency should never get the web process restarted.
+    The detailed system status lives in /api/health.
     """
     return {"status": "ok"}
 
@@ -141,7 +141,7 @@ async def health():
 
 @app.get("/api/providers")
 async def list_providers():
-    """Возвращает список доступных LLM провайдеров."""
+    """Returns the list of available LLM providers."""
     providers = LLMProviderFactory.list_available_providers()
     return {
         "available": providers,
@@ -156,13 +156,13 @@ async def list_providers():
 
 @app.get("/api/rag/status")
 async def rag_status():
-    """Статус RAG: индекс, источники, количество чанков."""
+    """RAG status: the index, its sources and the number of chunks."""
     return get_knowledge_base().get_status()
 
 
 @app.post("/api/rag/reindex")
 async def rag_reindex(force: bool = True):
-    """Переиндексация PDF из data/knowledge/."""
+    """Rebuilds the index from the PDFs in data/knowledge/."""
     result = get_knowledge_base().build_index(force=force)
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result)
@@ -171,11 +171,11 @@ async def rag_reindex(force: bool = True):
 
 @app.post("/api/analyze")
 async def analyze(file: UploadFile = File(...)):
-    """Загружает аудио и ставит анализ в очередь Celery.
+    """Takes an uploaded track and queues its analysis in Celery.
 
-    Essentia-анализ и генерация обзора могут занимать десятки секунд — раньше
-    это блокировало весь сервер на всё это время. Теперь запрос сразу
-    возвращает task_id, а результат забирается через /api/tasks/{task_id}.
+    Essentia analysis and review generation can take tens of seconds, and they
+    used to freeze the whole server for that long. Now the request returns a
+    task_id right away, and the result is fetched from /api/tasks/{task_id}.
     """
     if not ESSENTIA_AVAILABLE:
         raise HTTPException(
@@ -222,22 +222,22 @@ async def analyze(file: UploadFile = File(...)):
         logger.exception("Не удалось сохранить загруженный файл")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {exc}") from exc
 
-    # Файл на общем томе uploads — worker в отдельном контейнере, но видит тот же путь.
+    # The file lives on the shared uploads volume: the worker is a separate container but sees the same path.
     task = analyze_track_task.delay(str(file_path), file.filename)
     return {"task_id": task.id}
 
 
 @app.get("/api/tasks/{task_id}")
 async def get_task_status(task_id: str):
-    """Статус и результат фоновой задачи (анализ трека или шаг Growth Copilot)."""
+    """Status and result of a background task (a track analysis or a Growth Copilot step)."""
     result = celery_app.AsyncResult(task_id)
 
     if not result.ready():
         return {"status": "pending"}
 
     if result.failed():
-        # Задача упала сама, а не сообщила о доменной ошибке своим возвращаемым
-        # значением — это баг в коде задачи или сбой на уровне Celery/Redis.
+        # The task itself crashed instead of reporting a domain error in its return
+        # value. That means a bug in the task code or a Celery/Redis failure.
         return {"status": "error", "error": str(result.result)}
 
     payload = result.result
@@ -252,7 +252,7 @@ async def growth_start(
     file: UploadFile = File(...),
     artist_materials: list[str] = Form(default=[]),
 ):
-    """Ставит в очередь запуск Growth Copilot до выбора карточек артистом."""
+    """Queues the start of Growth Copilot; it runs until the artist has to pick ideas."""
     if growth_graph is None:
         raise HTTPException(status_code=503, detail="Growth Copilot недоступен: установите langgraph")
     if not file.filename or Path(file.filename).suffix.lower() not in SUPPORTED_EXTENSIONS:
@@ -277,7 +277,7 @@ async def growth_start(
 
 @app.post("/api/growth/select")
 async def growth_select(selection: GrowthSelection):
-    """Ставит в очередь возобновление графа с выбранными карточками."""
+    """Queues the resume of the graph with the idea cards the artist picked."""
     if growth_graph is None:
         raise HTTPException(status_code=503, detail="Growth Copilot недоступен")
     task = growth_select_task.delay(selection.thread_id, selection.selected_idea_ids)
@@ -286,7 +286,7 @@ async def growth_select(selection: GrowthSelection):
 
 @app.get("/api/growth/status/{thread_id}")
 async def growth_status(thread_id: str):
-    """Возвращает текущее состояние потока Growth Copilot."""
+    """Returns the current state of a Growth Copilot thread."""
     if growth_graph is None:
         raise HTTPException(status_code=503, detail="Growth Copilot недоступен")
     snapshot = growth_graph.get_state({"configurable": {"thread_id": thread_id}})

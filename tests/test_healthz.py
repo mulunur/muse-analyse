@@ -1,4 +1,4 @@
-"""Тесты /healthz — лёгкой проверки для проб Kubernetes."""
+"""Tests for /healthz, the lightweight check used by Kubernetes probes."""
 
 from __future__ import annotations
 
@@ -21,10 +21,10 @@ def test_healthz_returns_ok(client):
 
 
 def test_healthz_does_not_touch_external_dependencies(client, monkeypatch):
-    """Сбой Ollama/RAG не должен делать веб-процесс "нездоровым" для Kubernetes.
+    """A failing Ollama/RAG must not make the web process look "unhealthy" to Kubernetes.
 
-    Если бы /healthz использовал провайдеры или RAG, любой из этих вызовов
-    упал бы — а проба перезапускала бы под из-за чужой поломки.
+    If /healthz used the providers or RAG, either call would blow up here,
+    and the probe would restart the pod because of someone else's breakage.
     """
 
     def boom(*args, **kwargs):

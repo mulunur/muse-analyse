@@ -1,7 +1,7 @@
-# Redis — брокер и хранилище результатов Celery.
+# Redis: the broker and result store for Celery.
 #
-# Deployment — "держи всегда запущенной 1 копию этого пода и перезапускай,
-# если упал".
+# A Deployment means "keep 1 copy of this pod running at all times and restart it
+# if it dies".
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,9 +12,9 @@ metadata:
     app.kubernetes.io/part-of: muse-analyse
 spec:
   replicas: 1
-  # Recreate: сначала останавливает старый под, потом создаёт новый. Нужно,
-  # потому что том redis-data может быть подключён только одним узлом (RWO),
-  # а обычное RollingUpdate на время обновления держит два пода одновременно.
+  # Recreate: stop the old pod first, then create the new one. This is needed because
+  # the redis-data volume can be attached by only one node (RWO), while the usual
+  # RollingUpdate keeps two pods alive at the same time during an update.
   strategy:
     type: Recreate
   selector:
@@ -27,9 +27,9 @@ spec:
         app.kubernetes.io/component: redis
         app.kubernetes.io/part-of: muse-analyse
     spec:
-      # Не создавать переменные окружения вида REDIS_PORT=tcp://10.0.0.5:6379
-      # для каждого Service в namespace — иногда они ломают приложения,
-      # ожидающие REDIS_PORT=6379. Адреса нужны только через DNS-имена.
+      # Do not create environment variables like REDIS_PORT=tcp://10.0.0.5:6379
+      # for every Service in the namespace: they sometimes break applications that
+      # expect REDIS_PORT=6379. Addresses should only be resolved through DNS names.
       enableServiceLinks: false
       containers:
         - name: redis
@@ -37,9 +37,9 @@ spec:
           ports:
             - name: redis
               containerPort: 6379
-          # Образ сам при старте от root меняет владельца /data и понижает
-          # привилегии до пользователя redis — поэтому securityContext здесь
-          # не задаём (в отличие от web/worker).
+          # On start the image itself changes the owner of /data as root and then drops
+          # privileges to the redis user, so we do not set a securityContext here
+          # (unlike for web/worker).
           volumeMounts:
             - name: data
               mountPath: /data
@@ -63,9 +63,9 @@ spec:
           persistentVolumeClaim:
             claimName: redis-data
 ---
-# Service — это постоянный адрес для группы подов. Поды приходят и уходят,
-# меняя IP, а Service с именем "redis" остаётся: к нему обращаются как
-# redis://redis:6379 (имя берётся из metadata.name).
+# A Service is a permanent address for a group of pods. Pods come and go and change
+# IP, but the Service named "redis" stays: you reach it as
+# redis://redis:6379 (the name comes from metadata.name).
 apiVersion: v1
 kind: Service
 metadata:

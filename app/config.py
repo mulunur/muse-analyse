@@ -13,7 +13,7 @@ _RUNTIME_OVERRIDES: dict[str, str] = {}
 
 
 def get_runtime_llm_setting(name: str, default: str = "") -> str:
-    """Возвращает live-значение настройки LLM, приоритет у runtime-перезаписи."""
+    """Returns the current value of an LLM setting; a runtime override wins over the environment."""
     key = name.upper()
     if key in _RUNTIME_OVERRIDES:
         value = _RUNTIME_OVERRIDES[key]
@@ -22,7 +22,7 @@ def get_runtime_llm_setting(name: str, default: str = "") -> str:
 
 
 def set_runtime_llm_setting(name: str, value: str | None) -> str:
-    """Обновляет runtime-настройку и возвращает итоговое значение."""
+    """Sets a runtime override for a setting and returns the final value."""
     key = name.upper()
     if value is None or str(value).strip() == "":
         _RUNTIME_OVERRIDES.pop(key, None)
@@ -36,7 +36,7 @@ def set_runtime_llm_setting(name: str, value: str | None) -> str:
 
 
 def save_runtime_llm_settings(settings: dict[str, str]) -> None:
-    """Сохраняет настройки в .env, если файл существует или может быть создан."""
+    """Saves the settings to .env (the file is created if it does not exist)."""
     env_path = BASE_DIR / ".env"
     existing: dict[str, str] = {}
 
@@ -69,13 +69,13 @@ OPENAI_API_KEY = get_runtime_llm_setting("OPENAI_API_KEY", "")
 OPENAI_MODEL = get_runtime_llm_setting("OPENAI_MODEL", "gpt-4o-mini")
 
 # Anthropic Claude Configuration
-# claude-sonnet-5 — актуальное поколение Sonnet ($2/$10 за 1M токенов); альтернативы:
-# claude-opus-5 (мощнее, $5/$25) и claude-haiku-4-5 (дешевле, $1/$5).
+# claude-sonnet-5 is the current Sonnet generation ($2/$10 per 1M tokens). Alternatives:
+# claude-opus-5 (more capable, $5/$25) and claude-haiku-4-5 (cheaper, $1/$5).
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-5"
 ANTHROPIC_API_KEY = get_runtime_llm_setting("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL = get_runtime_llm_setting("CLAUDE_MODEL", DEFAULT_CLAUDE_MODEL)
 
-# Ollama Configuration (локальный запуск)
+# Ollama Configuration (runs locally)
 OLLAMA_BASE_URL = get_runtime_llm_setting("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = get_runtime_llm_setting("OLLAMA_MODEL", "mistral")
 
@@ -118,20 +118,20 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
 RAG_INDEX_DIR.mkdir(parents=True, exist_ok=True)
 
-# Очередь задач Celery. Обычный Redis (без RediSearch/Redis Stack) — он тут
-# нужен только как брокер и хранилище результатов, для этого хватает "из коробки".
+# Celery task queue. Plain Redis (no RediSearch / Redis Stack) is enough here:
+# it is only used as a broker and a place to keep task results.
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
-# Сколько хранить результат задачи в Redis после завершения, пока фронтенд не забрал.
+# How long a task result stays in Redis after it finishes, so the frontend has time to pick it up.
 CELERY_RESULT_EXPIRES_SECONDS = int(os.getenv("CELERY_RESULT_EXPIRES_SECONDS", "3600"))
 
-# Состояние графа Growth Copilot между /api/growth/start и /api/growth/select —
-# эти запросы могут обрабатываться разными Celery-воркерами, поэтому состояние
-# не может жить только в памяти одного процесса. Файл SQLite на общем томе
-# (см. docker-compose.yml) — самый лёгкий вариант, который решает эту задачу;
-# RedisSaver для LangGraph отпал, потому что требует Redis Stack (RediSearch),
-# а не обычный Redis, который используется здесь для очереди.
+# Growth Copilot graph state, kept between /api/growth/start and /api/growth/select.
+# These two requests may be handled by different Celery workers, so the state
+# cannot live in the memory of a single process. A SQLite file on a shared volume
+# (see docker-compose.yml) is the lightest way to solve that. LangGraph's
+# RedisSaver was ruled out because it needs Redis Stack (RediSearch), not the
+# plain Redis we already use for the queue.
 GROWTH_CHECKPOINT_DB_PATH = Path(
     os.getenv("GROWTH_CHECKPOINT_DB_PATH", str(BASE_DIR / "data" / "growth" / "checkpoints.sqlite3"))
 )

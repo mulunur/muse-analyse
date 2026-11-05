@@ -1,4 +1,4 @@
-"""Агент карточек идей."""
+"""Agent that comes up with the idea cards."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.agents.state import ContentIdea, GrowthState
 
 
 class _IdeasResponse(BaseModel):
-    """Обёртка: структурированный вывод требует объект в корне ответа."""
+    """Wrapper: structured output needs an object at the root of the answer."""
 
     ideas: list[ContentIdea]
 
@@ -30,7 +30,7 @@ _PROMPT = ChatPromptTemplate.from_messages(
 
 
 def ideation_agent(state: GrowthState) -> dict[str, list[ContentIdea]]:
-    """Создаёт 5-8 набросков, не превращая их в готовые публикации."""
+    """Comes up with 5-8 rough ideas, without turning them into finished posts."""
     response = invoke_structured(
         _PROMPT,
         _IdeasResponse,

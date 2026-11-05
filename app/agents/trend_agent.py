@@ -1,4 +1,4 @@
-"""Агент практического рыночного контекста."""
+"""Agent that gathers practical market context."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ _PROMPT = ChatPromptTemplate.from_messages(
 
 
 def _genre_hint(state: GrowthState) -> str:
-    """Даёт поиску осторожную метку без попытки угадать жанр как факт."""
+    """Gives the search a cautious label, without pretending to know the genre for sure."""
     materials = " ".join(state.artist_materials).lower()
     for genre in ("pop", "rock", "jazz", "electronic", "hip-hop", "indie", "folk"):
         if genre in materials:
@@ -35,7 +35,7 @@ def _genre_hint(state: GrowthState) -> str:
 
 
 def trend_agent(state: GrowthState) -> dict[str, TrendContext]:
-    """Делает до двух запросов Tavily и отделяет рынок от художественного голоса."""
+    """Makes up to two Tavily queries and keeps the market separate from the artist's creative voice."""
     urls: list[str] = []
     search_texts: list[str] = []
     try:
@@ -54,7 +54,7 @@ def trend_agent(state: GrowthState) -> dict[str, TrendContext]:
     except (ImportError, KeyError, OSError):
         pass
 
-    # Без результатов поиска модели не на что опереться — она бы выдумала плейлисты.
+    # Without search results the model has nothing to rely on, so it would make up playlists.
     parsed = (
         invoke_structured(_PROMPT, TrendContext, {"search_results": "\n".join(search_texts)})
         if search_texts

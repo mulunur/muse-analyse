@@ -1,5 +1,5 @@
-# Векторный индекс учебника (в проекте занимает ~30 МБ) — создаёт Job
-# index-knowledge, читают web и worker.
+# The textbook's vector index (about 30 MB in this project): written by the
+# index-knowledge Job, read by web and worker.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -12,9 +12,9 @@ spec:
     requests:
       storage: 1Gi
 ---
-# Кэш моделей HuggingFace. Модель эмбеддингов скачивается при первом
-# обращении (порядка полугигабайта); на общем томе её скачивают один раз,
-# а не каждый под при каждом старте.
+# The HuggingFace model cache. The embedding model is downloaded on first use
+# (about half a gigabyte); on a shared volume it is downloaded once, not by every
+# pod on every start.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

@@ -1,5 +1,5 @@
-# Namespace — "папка" внутри кластера: все ресурсы проекта живут в ней,
-# и их можно удалить одной командой: kubectl delete namespace muse-analyse
+# A Namespace is a "folder" inside the cluster: all of the project's resources live in it,
+# and you can delete them all with one command: kubectl delete namespace muse-analyse
 apiVersion: v1
 kind: Namespace
 metadata:

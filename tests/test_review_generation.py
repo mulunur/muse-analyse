@@ -1,4 +1,4 @@
-"""Тесты провайдеров как фабрик LangChain-моделей и генерации обзора без реального LLM."""
+"""Tests for the providers as LangChain model factories, and for review generation without a real LLM."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ SECTIONS = ReviewSections(
 
 
 class StubProvider:
-    """Провайдер-заглушка: structured_model возвращает заранее заданный ответ."""
+    """A stub provider: structured_model returns a canned answer."""
 
     name = "stub"
     model = "stub-model"
@@ -61,7 +61,7 @@ def stub_provider(monkeypatch):
     return install
 
 
-# --- Провайдеры как фабрики LangChain-моделей -------------------------------
+# --- Providers as LangChain model factories -------------------------------
 
 
 @pytest.mark.parametrize(
@@ -102,7 +102,7 @@ def test_claude_default_model_is_current_generation(monkeypatch):
 
 
 def test_claude_model_does_not_send_sampling_params():
-    """Актуальные модели Claude отклоняют temperature ошибкой 400."""
+    """The current Claude models reject temperature with a 400 error."""
     set_runtime_llm_setting("ANTHROPIC_API_KEY", "test-key")
 
     model = ClaudeProvider().build_chat_model()
@@ -114,7 +114,7 @@ def test_claude_uses_native_json_schema_output():
     assert ClaudeProvider.structured_output_kwargs == {"method": "json_schema"}
 
 
-# --- Промпт ------------------------------------------------------------------
+# --- Prompt ------------------------------------------------------------------
 
 
 def test_compact_features_drop_mfcc():
@@ -131,7 +131,7 @@ def test_review_prompt_contains_features_and_rag_context():
 
     assert "Essentia" in rendered
     assert '{"bpm": 128}' in rendered
-    assert "Контекст {из} книги" in rendered  # скобки из данных не ломают шаблон
+    assert "Контекст {из} книги" in rendered  # braces in the data do not break the template
     assert "не цитируй учебник" in rendered.lower()
 
 
@@ -156,7 +156,7 @@ def test_generate_review_builds_result_from_structured_response(stub_provider):
     assert review["language"] == "ru"
     assert review["score"] == 7.5
     assert review["sections"] == SECTIONS.model_dump()
-    # full_text собирается из разделов в порядке полей схемы
+    # full_text is built from the sections, in the order of the schema fields
     assert review["full_text"] == "Резюме\n\nРитм\n\nТональность\n\nПродакшн\n\nВывод"
     assert '"bpm": 128' in provider.prompts[0]
     assert "mfcc_coefficients" not in provider.prompts[0]
@@ -201,7 +201,7 @@ def test_generate_review_falls_back_to_template_on_llm_error(stub_provider):
 
 
 def test_invalid_model_answer_is_reported_as_llm_error(stub_provider):
-    """ValidationError — подкласс ValueError, но это сбой генерации, а не «нет провайдера»."""
+    """ValidationError is a subclass of ValueError, but it means generation failed, not "no provider"."""
     try:
         TrackReview.model_validate({"score": "не число", "sections": {}})
     except ValidationError as exc:

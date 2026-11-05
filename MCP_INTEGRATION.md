@@ -1,14 +1,15 @@
-# MCP Server для Muse Analyse
+# MCP server for Muse Analyse
 
-Для интеграции Muse Analyse как MCP сервера в Claude Desktop или других приложениях, вам понадобится MCP server wrapper.
+To plug Muse Analyse into Claude Desktop (or another app) as an MCP server, you need an MCP server wrapper.
 
-## Минимальная реализация MCP Server
+## A minimal MCP server implementation
 
-Создайте файл `mcp_server.py` в корне проекта:
+Create a file called `mcp_server.py` in the project root:
 
 ```python
-"""MCP Server для Muse Analyse — анализ музыкальных композиций."""
+"""MCP server for Muse Analyse: analysis of musical compositions."""
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -42,11 +43,11 @@ class AudioFeatures(BaseModel):
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    """Возвращает список доступных инструментов."""
+    """Returns the list of available tools."""
     return [
         Tool(
             name="check_providers",
-            description="Проверить какие LLM провайдеры доступны для анализа",
+            description="Check which LLM providers are available for the analysis",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -54,13 +55,13 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="analyze_audio",
-            description="Загрузить аудиофайл и получить анализ музыки с AI-обзором",
+            description="Upload an audio file and get a music analysis with an AI review",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Путь к аудиофайлу (MP3, WAV, FLAC, OGG, M4A)",
+                        "description": "Path to the audio file (MP3, WAV, FLAC, OGG, M4A)",
                     },
                 },
                 "required": ["file_path"],
@@ -68,7 +69,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_health",
-            description="Получить статус сервиса и доступности компонентов",
+            description="Get the service status and which components are available",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -79,7 +80,7 @@ async def list_tools() -> list[Tool]:
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> str:
-    """Выполняет вызванный инструмент."""
+    """Runs the tool that was called."""
     
     if name == "check_providers":
         async with httpx.AsyncClient() as client:
@@ -89,21 +90,26 @@ async def call_tool(name: str, arguments: dict) -> str:
     elif name == "analyze_audio":
         file_path = arguments.get("file_path")
         if not Path(file_path).exists():
-            return json.dumps({"error": f"Файл не найден: {file_path}"})
+            return json.dumps({"error": f"File not found: {file_path}"})
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=60) as client:
             with open(file_path, "rb") as f:
                 files = {"file": (Path(file_path).name, f)}
-                response = await client.post(
-                    f"{SERVER_URL}/api/analyze",
-                    files=files,
-                    timeout=300,
-                )
-        
-        if response.status_code == 200:
-            return json.dumps(response.json(), ensure_ascii=False, indent=2)
-        else:
-            return json.dumps({"error": response.text})
+                response = await client.post(f"{SERVER_URL}/api/analyze", files=files)
+            if response.status_code != 200:
+                return json.dumps({"error": response.text})
+
+            # /api/analyze only queues the analysis and returns a task_id,
+            # so we have to wait for the result ourselves
+            task_id = response.json()["task_id"]
+            for _ in range(150):  # up to about 5 minutes
+                state = (await client.get(f"{SERVER_URL}/api/tasks/{task_id}")).json()
+                if state["status"] == "done":
+                    return json.dumps(state["result"], ensure_ascii=False, indent=2)
+                if state["status"] == "error":
+                    return json.dumps({"error": state["error"]})
+                await asyncio.sleep(2)
+            return json.dumps({"error": "The analysis took too long"})
     
     elif name == "get_health":
         async with httpx.AsyncClient() as client:
@@ -111,13 +117,13 @@ async def call_tool(name: str, arguments: dict) -> str:
             return json.dumps(response.json(), ensure_ascii=False, indent=2)
     
     else:
-        return json.dumps({"error": f"Неизвестный инструмент: {name}"})
+        return json.dumps({"error": f"Unknown tool: {name}"})
 
 
 if __name__ == "__main__":
     import asyncio
     
-    # Запуск MCP server на stdio
+    # Run the MCP server over stdio
     async def main():
         async with server:
             await server.wait_for_shutdown()
@@ -125,21 +131,21 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Интеграция с Claude Desktop
+## Integrating with Claude Desktop
 
-### 1. Подготовьте MCP-клиент
+### 1. Prepare the MCP client
 
 ```bash
 source .venv/bin/activate
 pip install mcp httpx
 ```
 
-Само приложение запускается в Docker-контейнере. MCP-клиент не нужно помещать в контейнер Claude Desktop.
+The app itself runs in a Docker container. The MCP client does not need to go inside Claude Desktop's container.
 
-### 2. Добавьте конфигурацию
+### 2. Add the configuration
 
-**На macOS:**
-Отредактируйте `~/Library/Application\ Support/Claude/claude_desktop_config.json`:
+**On macOS:**
+Edit `~/Library/Application\ Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -157,71 +163,71 @@ pip install mcp httpx
 }
 ```
 
-**На Windows:**
+**On Windows:**
 `%APPDATA%\Claude\claude_desktop_config.json`
 
-**На Linux:**
+**On Linux:**
 `~/.config/Claude/claude_desktop_config.json`
 
-### 3. Запустите контейнер Muse Analyse
+### 3. Start the Muse Analyse container
 
 ```bash
 cd /path/to/muse-analyse
 docker compose up -d --build
 ```
 
-Проверьте API:
+Check the API:
 
 ```bash
 curl http://localhost:8000/api/health
 ```
 
-Если Compose установлен в standalone-варианте, используйте `docker-compose` вместо `docker compose`.
+If you have the standalone Compose, use `docker-compose` instead of `docker compose`.
 
-### 4. Перезагрузите Claude Desktop
+### 4. Restart Claude Desktop
 
-Теперь в Claude Desktop будут доступны инструменты:
-- **check_providers** — проверить доступные LLM
-- **analyze_audio** — загрузить и проанализировать трек
-- **get_health** — статус системы
+Claude Desktop will now offer these tools:
+- **check_providers**: check which LLMs are available
+- **analyze_audio**: upload and analyse a track
+- **get_health**: the system status
 
-## Примеры использования в Claude
+## Usage examples in Claude
 
-### Анализ трека
+### Analysing a track
 ```
-Проанализируй трек "~/Music/song.mp3" и дай детальный обзор
-```
-
-Claude использует инструмент `analyze_audio`, получит все параметры и обзор от Essentia + LLM.
-
-### Проверка настроек
-```
-Какие LLM провайдеры доступны для анализа музыки?
+Analyse the track "~/Music/song.mp3" and give me a detailed review
 ```
 
-Claude использует `check_providers` и покажет статус.
+Claude uses the `analyze_audio` tool and gets the parameters and the review from Essentia + the LLM.
+
+### Checking the setup
+```
+Which LLM providers are available for analysing music?
+```
+
+Claude uses `check_providers` and shows the status.
 
 ---
 
-## Альтернатива: FastAPI + nginx
+## An alternative: FastAPI + nginx
 
-Если вы хотите использовать Muse Analyse через обычный HTTP API без MCP:
+If you want to use Muse Analyse through the plain HTTP API, without MCP:
 
 ```bash
-# Запустите контейнер
+# Start the container
 docker compose up -d
 
-# Используйте API напрямую через curl или Python requests
+# Use the API directly with curl or Python requests
 curl http://localhost:8000/api/providers
 ```
 
-На VPS замените `localhost:8000` на домен приложения после настройки reverse proxy и HTTPS. MCP-конфигурация должна указывать на MCP-процесс, запущенный на машине пользователя; он обращается к API по значению `MUSE_API`.
+On a VPS, replace `localhost:8000` with the app's domain once you have set up a reverse proxy and HTTPS. The MCP configuration should point at the MCP process running on the user's own machine; that process reaches the API through the `MUSE_API` value.
 
 ---
 
-## Документация
+## Documentation
 
 - [MCP Protocol](https://modelcontextprotocol.io/)
 - [Claude Desktop Configuration](https://claude.ai/desktop)
 - [Muse Analyse API](./README.md)
-- [LLM Провайдеры](./LLM_PROVIDERS.md)
+- [LLM providers](./LLM_PROVIDERS.md)

@@ -1,4 +1,4 @@
-"""Состояние графа персонализированных идей контента."""
+"""The shared state that flows through the Growth Copilot graph."""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI для построения/перестроения RAG-индекса учебных материалов."""
+"""CLI for building / rebuilding the RAG index of the study materials."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import logging
 import sys
 from pathlib import Path
 
-# Добавляем корень проекта в PYTHONPATH
+# Add the project root to PYTHONPATH
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 

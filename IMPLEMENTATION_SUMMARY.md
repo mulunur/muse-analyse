@@ -1,72 +1,72 @@
-# 🎵 Muse Analyse — Multiple LLM Providers Implementation ✅
+# 🎵 Muse Analyse: multiple LLM providers, implemented ✅
 
-## ✨ Что было реализовано
+## ✨ What was implemented
 
-### 1. **Архитектура Multiple Providers** (Factory Pattern)
+### 1. **A multi-provider architecture** (Factory pattern)
 ```
 LLMProvider (ABC)
 ├── OpenAIProvider (gpt-4o-mini, gpt-4)
-├── ClaudeProvider (claude-sonnet-5)  
+├── ClaudeProvider (claude-sonnet-5)
 ├── OllamaProvider (mistral, llama2 local)
 └── NemotronProvider (meta/llama-2-70b-chat)
 
-+ LLMProviderFactory для управления
++ LLMProviderFactory to manage them
 ```
 
-### 2. **Конфигурация (.env)**
+### 2. **Configuration (.env)**
 ```env
-LLM_PROVIDER=openai              # Выбор провайдера
+LLM_PROVIDER=openai              # Which provider to use
 OPENAI_API_KEY=sk-...            # OpenAI
 ANTHROPIC_API_KEY=sk-ant-...     # Claude
-OLLAMA_BASE_URL=http://localhost # Ollama локально
+OLLAMA_BASE_URL=http://localhost # Ollama, running locally
 NEMOTRON_API_KEY=nvapi_...       # Nemotron
-LLM_TEMPERATURE=0.7              # Для всех
-LLM_MAX_TOKENS=2000              # Для всех
+LLM_TEMPERATURE=0.7              # For all of them
+LLM_MAX_TOKENS=2000              # For all of them
 ```
 
-### 3. **Новые Endpoints**
+### 3. **New endpoints**
 ```bash
-GET /api/providers                    # Список доступных
-GET /api/health                       # Статус (обновлён)
-POST /api/analyze                     # Анализ (использует фабрику)
+GET /api/providers                    # The list of available providers
+GET /api/health                       # Status (updated)
+POST /api/analyze                     # Analysis (uses the factory)
 ```
 
-### 4. **Автоматический Fallback**
+### 4. **Automatic fallback**
 ```
-Запрос на анализ
+An analysis request comes in
   ↓
-Пытаемся получить LLM провайдера
-  ├─ Успех → используем (OpenAI/Claude/Ollama/Nemotron)
-  └─ Ошибка → fallback на шаблонный обзор (работает всегда)
+Try to get an LLM provider
+  ├─ Success → use it (OpenAI/Claude/Ollama/Nemotron)
+  └─ Failure → fall back to the template review (always works)
 ```
 
-## 📦 Новые файлы
+## 📦 New files
 
-| Файл | Описание |
-|------|---------|
-| `app/llm_providers.py` | 4 провайдера + фабрика (420 строк) |
-| `LLM_PROVIDERS.md` | Подробный гайд по каждому провайдеру |
-| `ARCHITECTURE.md` | Для разработчиков |
-| `MCP_INTEGRATION.md` | Для Claude Desktop |
-| `QUICKSTART.md` | 5-минутный старт |
-| `CHANGELOG.md` | Список всех изменений |
-| `examples_test_providers.py` | Примеры использования |
-| `tests/test_llm_providers.py` | Unit тесты |
+| File | Description |
+|------|-------------|
+| `app/llm_providers.py` | The 4 providers + the factory |
+| `LLM_PROVIDERS.md` | A detailed guide to each provider |
+| `ARCHITECTURE.md` | For developers |
+| `MCP_INTEGRATION.md` | For Claude Desktop |
+| `QUICKSTART.md` | A 5-minute start |
+| `CHANGELOG.md` | A list of all the changes |
+| `examples/test_providers.py` | Usage examples |
+| `tests/test_llm_providers.py` | Unit tests |
 
-## 📝 Изменённые файлы
+## 📝 Changed files
 
-| Файл | Что изменилось |
-|------|-----------------|
-| `app/config.py` | +20 новых конфиг переменных |
-| `app/review_generator.py` | Использует LLMProviderFactory вместо hardcoded OpenAI |
-| `app/main.py` | Новый endpoint `/api/providers`, обновлён `/api/health` |
-| `.env.example` | Полностью переписан с примерами для всех провайдеров |
+| File | What changed |
+|------|--------------|
+| `app/config.py` | +20 new configuration variables |
+| `app/review_generator.py` | Uses LLMProviderFactory instead of a hardcoded OpenAI |
+| `app/main.py` | A new `/api/providers` endpoint, `/api/health` updated |
+| `.env.example` | Fully rewritten, with examples for every provider |
 | `requirements.txt` | +anthropic, +pytest |
-| `README.md` | Таблица провайдеров, обновлены примеры |
+| `README.md` | A provider table, updated examples |
 
-## 🚀 Как использовать
+## 🚀 How to use it
 
-### Вариант 1: OpenAI (по умолчанию, платно)
+### Option 1: OpenAI (the default, paid)
 ```bash
 # .env
 LLM_PROVIDER=openai
@@ -75,7 +75,7 @@ OPENAI_API_KEY=sk-your-key
 python run.py
 ```
 
-### Вариант 2: Claude (платно, мощнее)
+### Option 2: Claude (paid, more capable)
 ```bash
 # .env
 LLM_PROVIDER=claude
@@ -84,12 +84,12 @@ ANTHROPIC_API_KEY=sk-ant-your-key
 python run.py
 ```
 
-### Вариант 3: Ollama локально (бесплатно!)
+### Option 3: Ollama, local (free!)
 ```bash
-# В другом терминале:
+# In another terminal:
 ollama serve
 
-# Скачиваем модель:
+# Download a model:
 ollama pull mistral
 
 # .env
@@ -100,7 +100,7 @@ OLLAMA_MODEL=mistral
 python run.py
 ```
 
-### Вариант 4: Nemotron (платно/free tier)
+### Option 4: Nemotron (paid / free tier)
 ```bash
 # .env
 LLM_PROVIDER=nemotron
@@ -109,43 +109,44 @@ NEMOTRON_API_KEY=nvapi_your_key
 python run.py
 ```
 
-## 📊 Сравнение провайдеров
+## 📊 Provider comparison
 
-| Провайдер | Стоимость | Скорость | Качество | Приватность | Сложность |
-|-----------|----------|---------|---------|------------|-----------|
-| OpenAI | Платно | Быстро | Хорошо | Облако | Просто |
-| Claude | Платно | Средне | Отлично | Облако | Просто |
-| Ollama | Бесплатно | Средне | Хорошо | Локально | Средне |
-| Nemotron | Платно | Быстро | Хорошо | Облако | Просто |
+| Provider | Cost | Speed | Quality | Privacy | Difficulty |
+|----------|------|-------|---------|---------|------------|
+| OpenAI | Paid | Fast | Good | Cloud | Easy |
+| Claude | Paid | Medium | Excellent | Cloud | Easy |
+| Ollama | Free | Medium | Good | Local | Medium |
+| Nemotron | Paid | Fast | Good | Cloud | Easy |
 
-## ✅ Особенности
+## ✅ Highlights
 
-✨ **Абстрактный интерфейс** — легко добавлять новых провайдеров
-✨ **Factory pattern** — централизованное управление
-✨ **Auto-detection** — каждый провайдер знает доступен ли он
-✨ **Graceful fallback** — всегда работает даже без API
-✨ **100% backward compatible** — старый код работает как раньше
-✨ **Логирование** — видно какой провайдер используется
-✨ **Тесты** — unit тесты для всех компонентов
-✨ **Документация** — 4 новых файла с подробным описанием
+✨ **Abstract interface**: new providers are easy to add
+✨ **Factory pattern**: everything is managed in one place
+✨ **Auto-detection**: every provider knows whether it is available
+✨ **Graceful fallback**: it always works, even with no API
+✨ **100% backward compatible**: the old code works as before
+✨ **Logging**: you can see which provider is being used
+✨ **Tests**: unit tests for every component
+✨ **Documentation**: 4 new files with detailed descriptions
 
-## 📈 Производительность
+## 📈 Performance
 
 ```
-Essentia анализ:         45-120 сек (не изменилось)
-├─ OpenAI ответ:        5-15 сек
-├─ Claude ответ:        10-20 сек
-├─ Ollama (mistral):     15-45 сек
-├─ Nemotron ответ:      10-30 сек
-└─ Шаблон (fallback):    <1 сек
+Essentia analysis:       a few seconds to a minute or two, depending on the machine
+                         (we measured ~5 s for a 4-minute track on a recent laptop)
+├─ OpenAI response:      5-15 s
+├─ Claude response:      10-20 s
+├─ Ollama (mistral):     15-45 s
+├─ Nemotron response:    10-30 s
+└─ Template (fallback):  <1 s
 
-Итого: 60-180 сек на трек
+Total per track: the Essentia time plus the LLM time
 ```
 
-## 🔧 Как расширить (добавить провайдера)
+## 🔧 How to extend it (adding a provider)
 
 ```python
-# 1. Создать класс в llm_providers.py
+# 1. Create a class in llm_providers.py
 class MyProviderProvider(LLMProvider):
     name = "myprovider"
 
@@ -153,51 +154,51 @@ class MyProviderProvider(LLMProvider):
         return bool(os.getenv("MY_API_KEY"))
 
     def build_chat_model(self):
-        # Вернуть LangChain chat-модель; вызов API и парсинг сделает LangChain
+        # Return a LangChain chat model; LangChain does the API call and the parsing
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model="...", api_key=os.getenv("MY_API_KEY"), base_url="...")
 
-# 2. Зарегистрировать в фабрике
+# 2. Register it in the factory
 LLMProviderFactory._providers["myprovider"] = MyProviderProvider
 
-# 3. Готово! Теперь: LLM_PROVIDER=myprovider
+# 3. Done! Now: LLM_PROVIDER=myprovider
 ```
 
-## 📚 Документация
+## 📚 Documentation
 
-- **[QUICKSTART.md](QUICKSTART.md)** — 5 минут до первого запуска
-- **[README.md](README.md)** — основная документация
-- **[LLM_PROVIDERS.md](LLM_PROVIDERS.md)** — подробно по каждому
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — для разработчиков
-- **[CHANGELOG.md](CHANGELOG.md)** — все изменения в v1.1.0
-- **[MCP_INTEGRATION.md](MCP_INTEGRATION.md)** — Claude Desktop
+- **[QUICKSTART.md](QUICKSTART.md)**: 5 minutes to your first run
+- **[README.md](README.md)**: the main documentation
+- **[LLM_PROVIDERS.md](LLM_PROVIDERS.md)**: every provider in detail
+- **[ARCHITECTURE.md](ARCHITECTURE.md)**: for developers
+- **[CHANGELOG.md](CHANGELOG.md)**: all the changes in v1.1.0
+- **[MCP_INTEGRATION.md](MCP_INTEGRATION.md)**: Claude Desktop
 
-## 🧪 Тестирование
+## 🧪 Testing
 
 ```bash
-# Запустить тесты
+# Run the tests
 pytest tests/test_llm_providers.py -v
 
-# Проверить конфиг
+# Check the configuration
 curl http://localhost:8000/api/health | jq
 
-# Проверить провайдеры
+# Check the providers
 curl http://localhost:8000/api/providers | jq
 ```
 
-## 🎯 Следующие шаги
+## 🎯 Next steps
 
-### Опциональные улучшения:
-1. **Кэширование результатов** — не анализировать один трек дважды
-2. **История анализов** — сохранение результатов
-3. **Сравнение провайдеров** — анализ одного трека разными LLM
-4. **Рекомендации** — на основе параметров предлагать изменения
-5. **Batch анализ** — обработка папки треков
-6. **MCP сервер** — интеграция с Claude Desktop
-7. **Web UI улучшения** — выбор провайдера в интерфейсе
+### Optional improvements:
+1. **Caching of results**: do not analyse the same track twice
+2. **Analysis history**: keep the results
+3. **Provider comparison**: analyse one track with different LLMs
+4. **Recommendations**: suggest changes based on the parameters
+5. **Batch analysis**: process a folder of tracks
+6. **MCP server**: integration with Claude Desktop
+7. **Web UI improvements**: pick the provider in the interface
 
 ---
 
-**Все готово к использованию!** 🚀
+**Everything is ready to use!** 🚀
 
-Начните с [QUICKSTART.md](QUICKSTART.md) для быстрого старта.
+Start with [QUICKSTART.md](QUICKSTART.md) for a quick start.

@@ -7,11 +7,11 @@ from app.config import _RUNTIME_OVERRIDES
 
 @pytest.fixture(autouse=True)
 def _isolate_runtime_llm_settings():
-    """Откатывает runtime-переопределения LLM-настроек после каждого теста.
+    """Rolls back runtime overrides of the LLM settings after every test.
 
-    ``set_runtime_llm_setting`` пишет как в module-level ``_RUNTIME_OVERRIDES``,
-    так и в ``os.environ`` — без отката эти изменения "утекают" в другие тесты
-    в рамках одного процесса pytest.
+    ``set_runtime_llm_setting`` writes both to the module-level ``_RUNTIME_OVERRIDES``
+    and to ``os.environ``. Without a rollback these changes "leak" into other tests
+    running in the same pytest process.
     """
     overrides_before = dict(_RUNTIME_OVERRIDES)
     env_before = dict(os.environ)

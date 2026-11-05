@@ -1,25 +1,25 @@
-# MCP Сервер Muse Analyse
+# Muse Analyse MCP server
 
-Минимальная интеграция для использования с Claude Desktop и другими MCP-совместимыми инструментами.
+A minimal integration for use with Claude Desktop and other MCP-compatible tools.
 
-## Установка
+## Installation
 
-Muse Analyse запускается в Docker-контейнере, а MCP-сервер запускается отдельно у пользователя Claude Desktop.
+Muse Analyse runs in a Docker container, while the MCP server runs separately, on the machine of whoever uses Claude Desktop.
 
 ```bash
 cp .env.example .env
 docker compose up --build -d
 ```
 
-## Конфигурация Claude Desktop
+## Configuring Claude Desktop
 
 ### macOS
-1. Отредактируйте:
+1. Edit:
 ```bash
 ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
 
-2. Добавьте:
+2. Add:
 ```json
 {
   "mcpServers": {
@@ -41,57 +41,65 @@ docker compose up --build -d
 ### Linux
 `~/.config/Claude/claude_desktop_config.json`
 
-## Использование
+## Usage
 
-### 1. Запустите контейнер Muse Analyse
+### 1. Start the Muse Analyse container
 ```bash
 docker compose up -d
 ```
 
-### 2. Перезагрузите Claude Desktop
+### 2. Restart Claude Desktop
 
-### 3. Используйте в Claude
-
-```
-Проанализируй трек ~/Music/song.mp3 и дай детальный обзор
-```
-
-Claude автоматически использует инструмент `analyze_audio` и получит:
-- Все параметры Essentia
-- AI-обзор от выбранного LLM провайдера
-- Оценку 1-10
-
-## Доступные инструменты
-
-| Инструмент | Что делает |
-|-----------|-----------|
-| `analyze_audio` | Загрузить MP3/WAV/FLAC и получить анализ |
-| `check_providers` | Список доступных LLM провайдеров |
-| `get_status` | Статус системы (Essentia, провайдеры) |
-
-## Примеры запросов
+### 3. Use it in Claude
 
 ```
-"Какие провайдеры доступны для анализа?"
-→ Использует check_providers
-
-"Проанализируй track.mp3 и скажи танцевальный ли это трек?"
-→ Использует analyze_audio, затем LLM анализирует результаты
-
-"Проверь статус сервиса анализа"
-→ Использует get_status
+Analyse the track ~/Music/song.mp3 and give me a detailed review
 ```
 
-## Тестирование
+Claude automatically uses the `analyze_audio` tool and gets:
+- All the Essentia parameters
+- An AI review from the chosen LLM provider
+- A score from 1 to 10
 
-Запустите API-контейнер:
+## Available tools
+
+| Tool | What it does |
+|------|--------------|
+| `analyze_audio` | Upload an MP3/WAV/FLAC and get an analysis |
+| `check_providers` | The list of available LLM providers |
+| `get_status` | System status (Essentia, providers) |
+
+### How `analyze_audio` waits for the result
+
+The server analyses tracks in the background: the upload is queued, and a separate worker does the work. So `analyze_audio` uploads the file, then asks the server every couple of seconds whether the analysis is ready, and hands the finished result to Claude. That means:
+
+- the **worker must be running** (`docker compose up` starts it for you), otherwise the tool waits until it times out;
+- it waits up to **5 minutes** by default. To change that, add `MUSE_ANALYSIS_TIMEOUT` (in seconds) to the `env` block of the Claude Desktop config shown above;
+- if the analysis fails or times out, Claude gets an `error` message instead of the analysis.
+
+## Example requests
+
+```
+"Which providers are available for the analysis?"
+→ Uses check_providers
+
+"Analyse track.mp3 and tell me whether it is a danceable track"
+→ Uses analyze_audio, then the LLM interprets the results
+
+"Check the status of the analysis service"
+→ Uses get_status
+```
+
+## Testing
+
+Start the API container:
 ```bash
 docker compose up -d
 ```
 
-MCP-сервер запускается Claude Desktop автоматически. Для ручной проверки:
+Claude Desktop starts the MCP server automatically. For a manual check:
 ```bash
 python mcp_server.py
 ```
 
-Проверьте логи MCP сервера.
+Then look at the MCP server's logs.

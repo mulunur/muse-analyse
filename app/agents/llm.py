@@ -1,4 +1,4 @@
-"""Вызовы LLM для агентов Growth Copilot: LangChain-цепочки с логированием ошибок."""
+"""LLM calls for the Growth Copilot agents: LangChain chains that log their own errors."""
 
 from __future__ import annotations
 
@@ -21,10 +21,11 @@ def invoke_structured(
     schema: type[SchemaT],
     variables: dict[str, Any],
 ) -> SchemaT | None:
-    """Вызывает LLM и возвращает ответ, разобранный в объект ``schema``.
+    """Calls the LLM and returns the answer parsed into a ``schema`` object.
 
-    При любой ошибке (нет ключа, сеть, невалидный ответ) пишет предупреждение
-    в лог и возвращает None — агент сам решает, какое значение подставить.
+    If anything goes wrong (no API key, network error, an answer that does not
+    match the schema) it logs a warning and returns None, so the agent can
+    decide what to fall back to.
     """
     try:
         chain = prompt | get_structured_model(schema)
@@ -35,7 +36,7 @@ def invoke_structured(
 
 
 def invoke_text(prompt: ChatPromptTemplate, variables: dict[str, Any]) -> str:
-    """Вызывает LLM и возвращает обычный текст или пустую строку при ошибке."""
+    """Calls the LLM and returns plain text, or an empty string if the call fails."""
     try:
         chain = prompt | get_chat_model() | StrOutputParser()
         return chain.invoke(variables)

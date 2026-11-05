@@ -1,4 +1,4 @@
-"""LLM провайдеры: настройки и построение LangChain chat-моделей."""
+"""LLM providers: their settings, and how they build LangChain chat models."""
 
 from __future__ import annotations
 
@@ -21,35 +21,35 @@ logger = logging.getLogger(__name__)
 
 
 class LLMProvider(ABC):
-    """Провайдер знает свои настройки и умеет строить LangChain chat-модель.
+    """A provider knows its own settings and can build a LangChain chat model.
 
-    Сам вызов модели, разбор ответа и валидацию схемы выполняет LangChain,
-    поэтому провайдеру не нужен собственный код общения с API.
+    LangChain does the actual model call, parsing the answer and validating the
+    schema, so a provider needs no API-talking code of its own.
     """
 
     name: ClassVar[str]
     model: str
-    # Доп. аргументы для chat.with_structured_output(): у провайдеров разные
-    # способы получить структурированный ответ.
+    # Extra arguments for chat.with_structured_output(): providers have different
+    # ways of producing structured output.
     structured_output_kwargs: ClassVar[dict[str, Any]] = {}
 
     @abstractmethod
     def is_available(self) -> bool:
-        """Есть ли ключ / доступен ли сервис."""
+        """Is there an API key / is the service reachable?"""
 
     @abstractmethod
     def build_chat_model(self) -> BaseChatModel:
-        """Создаёт LangChain chat-модель с настройками провайдера."""
+        """Builds a LangChain chat model using the provider's settings."""
 
     def structured_model(self, schema: type[BaseModel]) -> Runnable:
-        """Chat-модель, которая возвращает объект ``schema`` вместо текста."""
+        """A chat model that returns a ``schema`` object instead of plain text."""
         return self.build_chat_model().with_structured_output(
             schema, **self.structured_output_kwargs
         )
 
 
 class OpenAIProvider(LLMProvider):
-    """OpenAI GPT провайдер."""
+    """OpenAI GPT provider."""
 
     name = "openai"
 
@@ -72,11 +72,11 @@ class OpenAIProvider(LLMProvider):
 
 
 class ClaudeProvider(LLMProvider):
-    """Anthropic Claude провайдер."""
+    """Anthropic Claude provider."""
 
     name = "claude"
-    # Родной структурированный вывод Anthropic вместо принудительного вызова
-    # инструмента (function_calling), который конфликтует с мышлением модели.
+    # Use Anthropic's native structured output instead of forced tool calling
+    # (function_calling), which clashes with the model's thinking.
     structured_output_kwargs = {"method": "json_schema"}
 
     def __init__(self):
@@ -89,8 +89,8 @@ class ClaudeProvider(LLMProvider):
     def build_chat_model(self) -> BaseChatModel:
         from langchain_anthropic import ChatAnthropic
 
-        # temperature намеренно не передаём: актуальные модели Claude (Sonnet 5,
-        # Opus 5) отклоняют sampling-параметры ошибкой 400.
+        # We deliberately do not pass temperature: the current Claude models
+        # (Sonnet 5, Opus 5) reject sampling parameters with a 400 error.
         return ChatAnthropic(
             model=self.model,
             api_key=self.api_key,
@@ -99,7 +99,7 @@ class ClaudeProvider(LLMProvider):
 
 
 class OllamaProvider(LLMProvider):
-    """Ollama локальный провайдер (поддержка Mistral, LLaMA и др.)."""
+    """Local Ollama provider (works with Mistral, LLaMA and others)."""
 
     name = "ollama"
 
@@ -128,7 +128,7 @@ class OllamaProvider(LLMProvider):
 
 
 class NemotronProvider(LLMProvider):
-    """NVIDIA Nemotron API провайдер."""
+    """NVIDIA Nemotron API provider."""
 
     name = "nemotron"
 
@@ -143,7 +143,7 @@ class NemotronProvider(LLMProvider):
         return bool(self.api_key)
 
     def build_chat_model(self) -> BaseChatModel:
-        # NVIDIA API совместим с форматом OpenAI, отличается только base_url.
+        # NVIDIA's API is OpenAI-compatible; only the base_url differs.
         from langchain_openai import ChatOpenAI
 
         return ChatOpenAI(
@@ -156,7 +156,7 @@ class NemotronProvider(LLMProvider):
 
 
 class LLMProviderFactory:
-    """Фабрика для создания провайдеров LLM."""
+    """Factory that creates LLM providers."""
 
     _providers: dict[str, type[LLMProvider]] = {
         "openai": OpenAIProvider,
@@ -168,17 +168,17 @@ class LLMProviderFactory:
     @classmethod
     def get_provider(cls, provider_name: str | None = None) -> LLMProvider:
         """
-        Возвращает инстанс провайдера.
+        Returns a provider instance.
 
         Args:
-            provider_name: Имя провайдера (openai, claude, ollama, nemotron).
-                         Если не указан, используется LLM_PROVIDER из config.
+            provider_name: Provider name (openai, claude, ollama, nemotron).
+                         If omitted, LLM_PROVIDER from the config is used.
 
         Returns:
-            Инстанс LLMProvider
+            An LLMProvider instance
 
         Raises:
-            ValueError: Если провайдер не найден или недоступен
+            ValueError: If the provider is unknown or not available
         """
         name = (provider_name or get_runtime_llm_setting("LLM_PROVIDER", "openai")).lower()
 
@@ -198,7 +198,7 @@ class LLMProviderFactory:
 
     @classmethod
     def list_available_providers(cls) -> dict[str, bool]:
-        """Возвращает список доступных провайдеров и их статус."""
+        """Returns the available providers and whether each one is ready."""
         result = {}
         for name, provider_class in cls._providers.items():
             provider = provider_class()
@@ -207,10 +207,10 @@ class LLMProviderFactory:
 
 
 def get_chat_model() -> BaseChatModel:
-    """Chat-модель для провайдера из текущих runtime-настроек."""
+    """A chat model for the provider chosen in the current runtime settings."""
     return LLMProviderFactory.get_provider().build_chat_model()
 
 
 def get_structured_model(schema: type[BaseModel]) -> Runnable:
-    """Модель провайдера из настроек, возвращающая объект ``schema``."""
+    """The chosen provider's model, returning a ``schema`` object."""
     return LLMProviderFactory.get_provider().structured_model(schema)

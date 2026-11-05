@@ -1,13 +1,13 @@
-# Kustomize — встроенный в kubectl способ собрать набор манифестов вместе и
-# накладывать поверх изменения (оверлеи/компоненты), не копируя файлы.
-#   kubectl kustomize k8s/base   — показать итоговый YAML, ничего не применяя
-#   kubectl apply -k k8s/base    — применить
+# Kustomize is kubectl's built-in way to put a set of manifests together and
+# layer changes on top (overlays / components) without copying files.
+#   kubectl kustomize k8s/base   - show the final YAML without applying anything
+#   kubectl apply -k k8s/base    - apply it
 #
-# secret.example.yaml сюда намеренно не входит (см. комментарий в нём).
+# secret.example.yaml is deliberately not included here (see the comment inside it).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Ставит этот namespace всем ресурсам ниже.
+# Puts every resource below into this namespace.
 namespace: muse-analyse
 
 resources:

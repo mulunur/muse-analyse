@@ -1,8 +1,8 @@
-"""Celery-приложение и фоновые задачи: анализ аудио и Growth Copilot.
+"""Celery app and background tasks: audio analysis and Growth Copilot.
 
-Задачи выполняются в отдельном процессе-воркере, а не внутри event loop
-FastAPI — долгий Essentia-анализ или цепочка вызовов LLM в Growth Copilot
-больше не блокируют сервер целиком на время своей работы.
+Tasks run in a separate worker process, not inside the FastAPI event loop,
+so a long Essentia analysis or a chain of LLM calls in Growth Copilot no
+longer freezes the whole server while it works.
 """
 
 from __future__ import annotations
@@ -28,11 +28,11 @@ celery_app = Celery(
     backend=CELERY_RESULT_BACKEND,
 )
 
-# Только для тестов: выполнить задачу синхронно, без брокера и воркера, и
-# всё же записать результат в backend, чтобы AsyncResult(id) его нашёл — как
-# и в проде, но без реального Celery-воркера. Обязательно задавать через
-# переменную окружения ДО импорта этого модуля: once задача привязана к
-# приложению, изменить эти два флага на лету Celery уже не позволяет.
+# For tests only: run a task synchronously, with no broker and no worker, but
+# still store the result in the backend so AsyncResult(id) can find it, just
+# like in production minus a real Celery worker. This has to be set through an
+# environment variable BEFORE this module is imported: once a task is bound to
+# the app, Celery no longer lets you change these two flags on the fly.
 _EAGER_FOR_TESTS = os.getenv("CELERY_TASK_ALWAYS_EAGER", "false").lower() == "true"
 
 celery_app.conf.update(
@@ -40,8 +40,8 @@ celery_app.conf.update(
     result_serializer="json",
     accept_content=["json"],
     result_expires=CELERY_RESULT_EXPIRES_SECONDS,
-    # Задачи тяжёлые и небыстрые — не подтверждать их выполненными заранее,
-    # чтобы упавший воркер не «потерял» задачу молча.
+    # Tasks are heavy and slow, so do not acknowledge them up front: that way a
+    # crashed worker cannot silently "lose" a task.
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     task_always_eager=_EAGER_FOR_TESTS,
@@ -50,11 +50,11 @@ celery_app.conf.update(
 
 
 def _state_to_json(values: dict[str, Any]) -> dict[str, Any]:
-    """Состояние графа в виде, безопасном для JSON-сериализатора Celery.
+    """Graph state in a form the Celery JSON serializer can handle.
 
-    Узлы графа возвращают поля как объекты Pydantic (например, list[ContentIdea]),
-    а не как словари. ``growth_graph.invoke()``/``get_state().values`` отдают их
-    как есть — обычный json.dumps на таком словаре падает.
+    Graph nodes return fields as Pydantic objects (for example list[ContentIdea]),
+    not dicts. ``growth_graph.invoke()`` and ``get_state().values`` hand them back
+    as they are, and a plain json.dumps on such a dict fails.
     """
     from app.agents.state import GrowthState
 
@@ -63,7 +63,7 @@ def _state_to_json(values: dict[str, Any]) -> dict[str, Any]:
 
 @celery_app.task(name="analyze_track")
 def analyze_track_task(file_path: str, filename: str) -> dict[str, Any]:
-    """Анализирует загруженный трек и генерирует обзор; файл удаляется в любом случае."""
+    """Analyses the uploaded track and generates a review; the file is deleted no matter what."""
     from app.audio_analysis import AudioAnalysisError, analyze_audio
     from app.review_generator import generate_review
 
@@ -73,7 +73,7 @@ def analyze_track_task(file_path: str, filename: str) -> dict[str, Any]:
         review = generate_review(features)
         return {"success": True, "filename": filename, "features": features, "review": review}
     except AudioAnalysisError as exc:
-        # Файл повреждён или в неподдерживаемом формате — повтор не поможет.
+        # The file is broken or in an unsupported format, so retrying will not help.
         return {"success": False, "error": str(exc)}
     except Exception as exc:
         logger.exception("Неожиданная ошибка анализа трека")
@@ -84,7 +84,7 @@ def analyze_track_task(file_path: str, filename: str) -> dict[str, Any]:
 
 @celery_app.task(name="growth_start")
 def growth_start_task(audio_path: str, artist_materials: list[str], thread_id: str) -> dict[str, Any]:
-    """Прогоняет граф до паузы на выборе идей артистом."""
+    """Runs the graph until it pauses for the artist to pick ideas."""
     from app.agents.graph import growth_graph
 
     config = {"configurable": {"thread_id": thread_id}}
@@ -103,7 +103,7 @@ def growth_start_task(audio_path: str, artist_materials: list[str], thread_id: s
 
 @celery_app.task(name="growth_select")
 def growth_select_task(thread_id: str, selected_idea_ids: list[str]) -> dict[str, Any]:
-    """Возобновляет граф с выбранными идеями и возвращает готовые черновики."""
+    """Resumes the graph with the chosen ideas and returns the finished drafts."""
     from langgraph.types import Command
 
     from app.agents.graph import growth_graph

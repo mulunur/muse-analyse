@@ -1,17 +1,16 @@
-# PersistentVolumeClaim (PVC) — "заявка на диск". Под сам диск не создаёт,
-# он просит у кластера том нужного размера, а кластер выдаёт его через
-# StorageClass. storageClassName не указан намеренно: берётся класс по
-# умолчанию, он есть и в kind, и в minikube, и в k3s (у каждого свой, но все
-# называются "по умолчанию") — поэтому манифест переносим между ними.
+# A PersistentVolumeClaim (PVC) is a "request for a disk". A pod does not create the
+# disk itself: it asks the cluster for a volume of a given size, and the cluster provides
+# it through a StorageClass. storageClassName is left out on purpose, so the default
+# class is used. kind, minikube and k3s each have one (a different one in each, but all
+# of them are marked as the default), which keeps the manifest portable between them.
 #
-# ReadWriteOnce (RWO) = том может быть подключён с ОДНОГО узла (несколько
-# подов на этом узле могут им пользоваться вместе). Именно поэтому воркер
-# привязан к узлу веб-пода (см. affinity в worker.yaml): uploads и
-# growth-state должны быть видны обоим.
+# ReadWriteOnce (RWO) = the volume can be attached from ONE node (several pods on
+# that node can share it). That is exactly why the worker is pinned to the web pod's
+# node (see affinity in worker.yaml): uploads and growth-state must be visible to both.
 
-# Загруженные треки. В docker-compose это был tmpfs в оперативной памяти;
-# в кластере общий том между подами — это диск. Файл удаляется сразу после
-# обработки, поэтому места нужно немного (лимит загрузки — 50 МБ).
+# Uploaded tracks. In docker-compose this was a tmpfs in RAM; in the cluster a volume
+# shared between pods is a disk. The file is deleted right after processing, so
+# little space is needed (the upload limit is 50 MB).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -24,11 +23,11 @@ spec:
     requests:
       storage: 2Gi
 ---
-# Файл SQLite с состоянием Growth Copilot между /api/growth/start и /select.
-# SQLite в режиме WAL общается через файл общей памяти (-shm), поэтому веб-под
-# и воркер обязаны быть на ОДНОМ узле и на локальном диске. Сетевую файловую
-# систему (NFS и т.п.) для этого файла использовать нельзя; на нескольких
-# узлах понадобится PostgreSQL (PostgresSaver в LangGraph).
+# The SQLite file with Growth Copilot state between /api/growth/start and /select.
+# SQLite in WAL mode talks through a shared-memory file (-shm), so the web pod
+# and the worker must be on ONE node and on a local disk. A network file system
+# (NFS and the like) must not be used for this file; with several nodes you will
+# need PostgreSQL (PostgresSaver in LangGraph).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -41,7 +40,7 @@ spec:
     requests:
       storage: 1Gi
 ---
-# Данные Redis (снимки dump.rdb). Очередь переживёт перезапуск пода.
+# Redis data (dump.rdb snapshots). The queue survives a pod restart.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

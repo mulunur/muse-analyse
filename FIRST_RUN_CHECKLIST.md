@@ -1,49 +1,49 @@
-# ✅ Checklist — First Run
+# ✅ Checklist: first run
 
-## Пред-требования ✓
+## Prerequisites ✓
 
-- [ ] Docker Desktop (macOS/Windows) или Docker Engine (Linux VPS)
-- [ ] Docker Compose plugin
-- [ ] Git (опционально)
+- [ ] Docker Desktop (macOS/Windows) or Docker Engine (a Linux VPS)
+- [ ] The Docker Compose plugin
+- [ ] Git (optional)
 
-## 1. Окружение
+## 1. Environment
 
 ```bash
 cd /path/to/muse-analyse
 cp .env.example .env
 ```
 
-- [ ] `.env` создан
+- [ ] `.env` is created
 
-## 2. Конфигурация
+## 2. Configuration
 
-**Выберите вариант (отредактируйте `.env`):**
+**Pick one option (edit `.env`):**
 
-### Вариант A: OpenAI (рекомендуется для первого запуска)
+### Option A: OpenAI (recommended for a first run)
 ```env
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-your-api-key-here
 OPENAI_MODEL=gpt-4o-mini
 ```
-- [ ] API ключ получен (https://platform.openai.com/api-keys)
-- [ ] Ключ добавлен в `.env`
+- [ ] You have an API key (https://platform.openai.com/api-keys)
+- [ ] The key is added to `.env`
 
-### Вариант B: Claude
+### Option B: Claude
 ```env
 LLM_PROVIDER=claude
 ANTHROPIC_API_KEY=sk-ant-your-api-key-here
 CLAUDE_MODEL=claude-sonnet-5
 ```
-- [ ] API ключ получен (https://console.anthropic.com/)
-- [ ] Ключ добавлен в `.env`
+- [ ] You have an API key (https://console.anthropic.com/)
+- [ ] The key is added to `.env`
 
-### Вариант C: Ollama (локально, бесплатно)
+### Option C: Ollama (local, free)
 ```bash
-# Установите Ollama: https://ollama.ai/download
-# Запустите в другом терминале:
+# Install Ollama: https://ollama.ai/download
+# Start it in another terminal:
 ollama serve
 
-# Скачайте модель в третьем терминале:
+# Download a model in a third terminal:
 ollama pull mistral
 ```
 
@@ -54,137 +54,155 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=mistral
 ```
 
-- [ ] Ollama установлена
-- [ ] `ollama serve` запущена в отдельном терминале
-- [ ] `ollama pull mistral` выполнена
-- [ ] `.env` обновлен
+- [ ] Ollama is installed
+- [ ] `ollama serve` is running in a separate terminal
+- [ ] `ollama pull mistral` has finished
+- [ ] `.env` is updated
 
-### Вариант D: Nemotron
+### Option D: Nemotron
 ```env
 LLM_PROVIDER=nemotron
 NEMOTRON_API_KEY=nvapi_your_api_key_here
 NEMOTRON_MODEL=meta/llama-2-70b-chat
 ```
-- [ ] API ключ получен (https://developer.nvidia.com/)
-- [ ] Ключ добавлен в `.env`
+- [ ] You have an API key (https://developer.nvidia.com/)
+- [ ] The key is added to `.env`
 
-## 3. Запуск контейнера
+## 3. Start the containers
 
 ```bash
 docker compose up --build -d
 ```
 
-- [ ] Образ собран
-- [ ] Контейнер запущен
+This starts three services: the app, `redis` (the task queue) and `worker` (the process that does the analysis).
 
-## 4. Проверка здоровья
+- [ ] The image is built
+- [ ] The containers are running
+
+## 4. Health check
 
 ```bash
 curl http://localhost:8000/api/health
 ```
 
-- [ ] Essentia доступна
-- [ ] Контейнер имеет статус healthy
+- [ ] Essentia is available
+- [ ] The container is reported as healthy
 
-## 5. Проверка провайдеров
+## 5. Check the providers
 
 ```bash
 curl http://localhost:8000/api/providers | jq
 ```
 
-- [ ] Список провайдеров возвращается
+- [ ] A list of providers comes back
 
-## 6. Первый тест в браузере
+## 6. First test in the browser
 
-Откройте: **http://localhost:8000**
+Open **http://localhost:8000**
 
-- [ ] Веб-интерфейс загружается
-- [ ] Видна зона для загрузки файлов
+- [ ] The web interface loads
+- [ ] You can see the file drop zone
 
-## 7. Первый анализ
+## 7. First analysis
 
-Найдите MP3/WAV файл и либо:
+Find an MP3/WAV file and then do either of these:
 
-### Вариант A: Веб-интерфейс
-1. Перетащите файл на страницу
-2. Ждите анализа (1-3 минуты)
-3. Смотрите результаты
+### Option A: Web interface
+1. Drag the file onto the page
+2. Wait for the analysis (up to a minute or two)
+3. Look at the results
 
-- [ ] Файл загружен
-- [ ] Анализ запущен
-- [ ] Результаты отображаются
+- [ ] The file is uploaded
+- [ ] The analysis starts
+- [ ] The results are shown
 
-### Вариант B: Command line
+### Option B: Command line
+
+Analysis runs in the background, so this takes two steps. First upload the track and get a `task_id`:
+
 ```bash
-curl -X POST -F "file=@/path/to/track.mp3" http://localhost:8000/api/analyze | jq
+curl -X POST -F "file=@/path/to/track.mp3" http://localhost:8000/api/analyze
+# {"task_id": "..."}
 ```
 
-- [ ] Ответ получен
-- [ ] В ответе есть `review` с оценкой и текстом
+Then ask for the result (repeat until `status` is `done`):
 
-## 8. Проверка результатов
+```bash
+curl http://localhost:8000/api/tasks/<task_id> | jq
+```
 
-В ответе должны быть:
+- [ ] You got a `task_id`
+- [ ] The result contains a `review` with a score and text
+
+## 8. Check the results
+
+When the task is done, the response should look like this:
 ```json
 {
-  "success": true,
-  "filename": "track.mp3",
-  "features": {
-    "duration_sec": ...,
-    "rhythm": { "bpm": ... },
-    "tonal": { "key": ... },
-    ...
-  },
-  "review": {
-    "source": "openai",  // или claude/ollama/nemotron
-    "model": "gpt-4o-mini",
-    "score": 7.5,
-    "sections": { ... },
-    "full_text": "..."
+  "status": "done",
+  "result": {
+    "success": true,
+    "filename": "track.mp3",
+    "features": {
+      "duration_sec": ...,
+      "rhythm": { "bpm": ... },
+      "tonal": { "key": ... },
+      ...
+    },
+    "review": {
+      "source": "openai",  // or claude/ollama/nemotron
+      "model": "gpt-4o-mini",
+      "score": 7.5,
+      "sections": { ... },
+      "full_text": "..."
+    }
   }
 }
 ```
 
-- [ ] `features` содержит параметры анализа
-- [ ] `review.source` указывает используемый провайдер
-- [ ] `review.score` — число 1-10
-- [ ] `review.full_text` содержит обзор на русском
+- [ ] `features` holds the analysis parameters
+- [ ] `review.source` shows which provider was used
+- [ ] `review.score` is a number from 1 to 10
+- [ ] `review.full_text` holds the review in Russian
 
-## ✨ Готово!
+## ✨ Done!
 
-Если все пункты выше отмечены — система работает корректно!
+If everything above is ticked, the system is working correctly!
 
-## 🐛 Решение проблем
+## 🐛 Troubleshooting
 
-### Essentia не установилась
-→ Проверьте архитектуру: production-образ рассчитан на `linux/amd64`.
-→ Посмотрите логи: `docker compose logs muse-analyse`
+### Essentia did not install
+→ Check the architecture: the production image is built for `linux/amd64`.
+→ Look at the logs: `docker compose logs muse-analyse`
 
-### LLM провайдер отмечен как false
-→ Проверьте API ключ в `.env`
+### An LLM provider shows as false
+→ Check the API key in `.env`
 
-### Ollama не подключается
-→ Убедитесь что `ollama serve` запущена
-→ Проверьте `OLLAMA_BASE_URL` в `.env`
+### Ollama will not connect
+→ Make sure `ollama serve` is running
+→ Check `OLLAMA_BASE_URL` in `.env`
 
-### Медленный первый анализ
-→ Это нормально, Essentia обрабатывает весь файл
-→ 3 мин трека = 45-120 сек анализа
+### The task stays "pending" forever
+→ The worker is probably not running. Check `docker compose ps` and `docker compose logs worker`
 
-### API ошибка 503
-→ Essentia не загрузилась внутри контейнера
-→ Пересоберите образ: `docker compose build --no-cache muse-analyse`
+### The first analysis is slow
+→ That is normal: Essentia processes the whole file
+→ A 3-minute track takes anywhere from a few seconds to a minute or two, depending on your machine
 
-## 📚 Дальше
+### API error 503
+→ Essentia did not load inside the container
+→ Rebuild the image: `docker compose build --no-cache muse-analyse`
 
-- Прочитайте [QUICKSTART.md](QUICKSTART.md)
-- Изучите [LLM_PROVIDERS.md](LLM_PROVIDERS.md)
-- Смотрите примеры в [examples_test_providers.py](examples_test_providers.py)
+## 📚 Next
 
-## 🚀 Готовы начать?
+- Read [QUICKSTART.md](QUICKSTART.md)
+- Study [LLM_PROVIDERS.md](LLM_PROVIDERS.md)
+- See the examples in [examples/test_providers.py](examples/test_providers.py)
+
+## 🚀 Ready to start?
 
 ```bash
 docker compose up --build -d
 ```
 
-Откройте браузер на **http://localhost:8000** и загружайте треки! 🎵
+Open **http://localhost:8000** in your browser and upload some tracks! 🎵

@@ -1,4 +1,4 @@
-"""Мультиагентный пайплайн Growth Copilot."""
+"""The multi-agent pipeline behind Growth Copilot."""
 
 from app.agents.graph import growth_graph
 

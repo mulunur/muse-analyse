@@ -1,4 +1,4 @@
-"""Агент развёртывания выбранных идей."""
+"""Agent that turns the chosen ideas into full drafts."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ _PROMPT = ChatPromptTemplate.from_messages(
 
 
 def draft_agent(state: GrowthState) -> dict[str, dict[str, str]]:
-    """Готовит отдельный текст для каждой выбранной карточки."""
+    """Writes a separate draft for every idea the artist picked."""
     ideas = {idea.id: idea for idea in state.content_ideas}
     features = state.audio_features.model_dump() if state.audio_features else {}
     profile = state.voice_profile

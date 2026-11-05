@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Самый простой eval: прогоняет кейсы через настоящий код проекта и проверяет результат.
+"""The simplest possible eval: runs the cases through the real project code and checks the result.
 
-Запуск (из корня проекта, с активированным окружением):
+Usage (from the project root, with the environment activated):
 
-    python evals/run_evals.py                 # все кейсы
+    python evals/run_evals.py                 # all cases
     python evals/run_evals.py --suite critique
     python evals/run_evals.py --case slow_ballad --repeat 3
 
-Провайдер LLM берётся из обычных настроек (.env или переменные окружения), например:
+The LLM provider comes from the usual settings (.env or environment variables), for example:
 
     LLM_PROVIDER=ollama OLLAMA_MODEL=gemma4:latest python evals/run_evals.py
 """
@@ -26,8 +26,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-# RAG для первого знакомства выключаем: он грузит модель эмбеддингов (~1,4 ГБ)
-# и сильно замедляет прогон. Включить: RAG_ENABLED=true python evals/run_evals.py
+# RAG is switched off for a first taste: it loads the embedding model (~1.4 GB)
+# and slows the run down a lot. To turn it on: RAG_ENABLED=true python evals/run_evals.py
 os.environ.setdefault("RAG_ENABLED", "false")
 
 from evals.cases import CRITIQUE_CASES, REVIEW_CASES  # noqa: E402
@@ -35,9 +35,9 @@ from evals.cases import CRITIQUE_CASES, REVIEW_CASES  # noqa: E402
 SECTIONS = ("summary", "rhythm", "tonality", "production", "verdict")
 
 
-# --- Проверки (graders) -----------------------------------------------------
-# Каждая проверка возвращает (прошла_ли, пояснение). Пояснение показывается,
-# когда проверка не прошла — именно оно помогает понять, почему.
+# --- Checks (graders) -------------------------------------------------------
+# Each check returns (passed, explanation). The explanation is shown when a check
+# fails, and it is what helps you understand why.
 
 
 def cyrillic_share(text: str) -> float:
@@ -54,32 +54,32 @@ def check_review(review: dict, expect: dict) -> list[tuple[str, bool, str]]:
     score = review.get("score")
     checks = []
 
-    # 0. Самая важная проверка: ответил ли именно LLM. Если он упал, код молча
-    #    подставляет шаблонный обзор — остальные проверки он бы мог пройти "зря".
+    # 0. The most important check: did the LLM itself answer? If it failed, the code
+    #    quietly swaps in a template review, which could pass the other checks "for nothing".
     used_llm = review.get("source") != "template" and "llm_error" not in review
     checks.append(("used_llm", used_llm,
                    f"source={review.get('source')!r}, llm_error={review.get('llm_error')!r}"))
 
-    # 1. Все пять разделов на месте и не пустые.
+    # 1. All five sections are present and not empty.
     missing = [s for s in SECTIONS if len(str(sections.get(s, ""))) < 30]
     checks.append(("has_all_sections", not missing, f"пустые или короткие разделы: {missing}"))
 
-    # 2. Оценка в допустимых пределах.
+    # 2. The score is within the allowed range.
     ok_score = isinstance(score, (int, float)) and 1 <= score <= 10
     checks.append(("score_in_range", ok_score, f"score={score!r}"))
 
-    # 3. Текст по-русски.
+    # 3. The text is in Russian.
     share = cyrillic_share(text)
     checks.append(("is_russian", share >= 0.8, f"доля кириллицы {share:.0%}"))
 
-    # 4. Обзор "опирается на параметры": называет темп примерно как во входе.
-    #    Проверка намеренно грубая: ищем любое число в пределах ±5 от нужного.
+    # 4. The review "relies on the parameters": it names a tempo close to the one in the input.
+    #    The check is deliberately rough: we look for any number within ±5 of the expected one.
     if "bpm" in expect:
         numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", text)]
         close = any(abs(n - expect["bpm"]) <= 5 for n in numbers)
         checks.append(("mentions_bpm", close, f"нет числа около {expect['bpm']} BPM"))
 
-    # 5. Не выдумывает громкость, если её не посчитали.
+    # 5. It does not invent loudness when it was not computed.
     if expect.get("no_lufs"):
         invented = re.search(r"\d\s*LUFS", text, re.IGNORECASE)
         checks.append(("no_invented_lufs", not invented,
@@ -99,8 +99,8 @@ def run_critique_case(case: dict) -> tuple[list, dict]:
     from app.agents import critique_agent as critique_module
     from app.agents.state import GrowthState, VoiceProfile
 
-    # critique_agent при сбое LLM молча возвращает "проверка пройдена". Чтобы
-    # отличить это от настоящего вердикта, подглядываем, вернул ли LLM ответ.
+    # When the LLM fails, critique_agent quietly returns "check passed". To tell that
+    # apart from a real verdict, we peek at whether the LLM actually returned an answer.
     llm_answered: list[bool] = []
     original = critique_module.invoke_structured
 
@@ -129,7 +129,7 @@ def run_critique_case(case: dict) -> tuple[list, dict]:
     return checks, {"passed": got, "feedback": result["critique_feedback"]}
 
 
-# --- Прогон и отчёт ---------------------------------------------------------
+# --- Running and reporting ---------------------------------------------------------
 
 
 def main() -> int:
@@ -158,7 +158,7 @@ def main() -> int:
         suites.append(("критик", CRITIQUE_CASES, run_critique_case))
 
     records = []
-    totals: dict[tuple[str, str], list[bool]] = {}  # (набор, проверка) -> [прошла?, ...]
+    totals: dict[tuple[str, str], list[bool]] = {}  # (suite, check) -> [passed?, ...]
 
     for suite_name, cases, runner in suites:
         for case in cases:

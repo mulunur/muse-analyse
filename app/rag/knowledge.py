@@ -1,4 +1,4 @@
-"""База знаний RAG: индексация PDF и семантический поиск."""
+"""RAG knowledge base: PDF indexing and semantic search."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ COLLECTION_NAME = "music_theory"
 
 
 def build_retrieval_query(features: dict[str, Any]) -> str:
-    """Строит поисковый запрос из признаков аудиоанализа."""
+    """Builds a search query from the audio-analysis features."""
     rhythm = features.get("rhythm", {})
     tonal = features.get("tonal", {})
     spectral = features.get("spectral", {})
@@ -67,7 +67,7 @@ def build_retrieval_query(features: dict[str, Any]) -> str:
 
 
 class KnowledgeBase:
-    """Индекс учебных материалов на ChromaDB."""
+    """A ChromaDB index of the study materials."""
 
     def __init__(
         self,
@@ -104,13 +104,13 @@ class KnowledgeBase:
         return self._collection
 
     def list_source_files(self) -> list[Path]:
-        """Возвращает PDF-файлы в каталоге знаний."""
+        """Returns the PDF files in the knowledge directory."""
         if not self.knowledge_dir.exists():
             return []
         return sorted(self.knowledge_dir.glob("*.pdf"))
 
     def get_status(self) -> dict[str, Any]:
-        """Статус индекса и источников."""
+        """Status of the index and its sources."""
         sources = [p.name for p in self.list_source_files()]
         chunk_count = 0
         indexed = False
@@ -135,10 +135,10 @@ class KnowledgeBase:
 
     def build_index(self, *, force: bool = False) -> dict[str, Any]:
         """
-        Индексирует все PDF из knowledge_dir.
+        Indexes every PDF from knowledge_dir.
 
         Args:
-            force: Пересоздать индекс с нуля.
+            force: Rebuild the index from scratch.
         """
         pdf_files = self.list_source_files()
         if not pdf_files:
@@ -193,14 +193,14 @@ class KnowledgeBase:
         logger.info("Вычисление эмбеддингов для %d чанков...", len(texts))
         embeddings = embed_texts(self.embedding_model, texts)
 
-        # Удаляем чанки, которых больше нет в текущих PDF.
+        # Remove chunks that are no longer in the current PDFs.
         indexed_ids = set(collection.get(include=[]).get("ids", []))
         current_ids = set(ids)
         stale_ids = indexed_ids - current_ids
         if stale_ids:
             collection.delete(ids=list(stale_ids))
 
-        # ChromaDB upsert батчами
+        # ChromaDB upsert, in batches
         batch_size = 100
         for i in range(0, len(ids), batch_size):
             end = i + batch_size
@@ -225,10 +225,10 @@ class KnowledgeBase:
         top_k: int | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Ищет top-k релевантных фрагментов по запросу.
+        Finds the top-k most relevant passages for a query.
 
         Returns:
-            Список dict: text, page, source, score, chunk_index.
+            A list of dicts: text, page, source, score, chunk_index.
         """
         k = top_k or self.top_k
         collection = self._get_collection()
@@ -268,12 +268,12 @@ class KnowledgeBase:
         *,
         top_k: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Поиск релевантных фрагментов по признакам аудиоанализа."""
+        """Finds relevant passages using the audio-analysis features."""
         query = build_retrieval_query(features)
         return self.retrieve(query, top_k=top_k)
 
     def format_context(self, passages: list[dict[str, Any]]) -> str:
-        """Форматирует найденные фрагменты для LLM-промпта."""
+        """Formats the passages that were found for the LLM prompt."""
         if not passages:
             return ""
 
@@ -296,7 +296,7 @@ _knowledge_base: KnowledgeBase | None = None
 
 
 def get_knowledge_base() -> KnowledgeBase:
-    """Singleton базы знаний."""
+    """The shared (singleton) knowledge base."""
     global _knowledge_base
     if _knowledge_base is None:
         _knowledge_base = KnowledgeBase()
@@ -305,10 +305,10 @@ def get_knowledge_base() -> KnowledgeBase:
 
 def retrieve_rag_context(features: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
     """
-    Извлекает RAG-контекст для генерации обзора.
+    Extracts the RAG context used to generate a review.
 
     Returns:
-        (formatted_context, passages) — пустые значения если RAG отключён или индекс пуст.
+        (formatted_context, passages): both are empty if RAG is off or the index is empty.
     """
     if not RAG_ENABLED:
         return "", []

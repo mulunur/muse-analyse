@@ -1,6 +1,6 @@
-# Воркер Celery: выполняет анализ трека и шаги Growth Copilot. Аналог
-# сервиса `worker` из docker-compose.yml. Тот же образ, что и у web,
-# отличается только командой запуска.
+# The Celery worker: runs track analysis and the Growth Copilot steps. The equivalent
+# of the `worker` service in docker-compose.yml. It is the same image as web and
+# differs only in the start command.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -10,8 +10,8 @@ metadata:
     app.kubernetes.io/component: worker
     app.kubernetes.io/part-of: muse-analyse
 spec:
-  # Один воркер. Нагрузку масштабируют числом реплик (см. README про KEDA),
-  # а не параметром --concurrency: у каждого пода собственный лимит памяти.
+  # One worker. Load is scaled by the number of replicas (see the README about KEDA),
+  # not by the --concurrency flag: every pod has its own memory limit.
   replicas: 1
   strategy:
     type: Recreate
@@ -27,9 +27,9 @@ spec:
         app.kubernetes.io/part-of: muse-analyse
     spec:
       enableServiceLinks: false
-      # Celery при SIGTERM (остановке пода) дорабатывает текущую задачу.
-      # Анализ трека + LLM-вызовы занимают до минуты-двух, так что даём запас,
-      # иначе по умолчанию (30 с) задачу оборвут.
+      # On SIGTERM (pod shutdown) Celery finishes the task it is running.
+      # Track analysis plus LLM calls take up to a minute or two, so we leave some slack,
+      # otherwise the default (30 s) would cut the task off.
       terminationGracePeriodSeconds: 120
       securityContext:
         runAsNonRoot: true
@@ -37,11 +37,11 @@ spec:
         fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
-      # Воркеру нужны те же тома uploads и growth-state, что и вебу, а они
-      # RWO — доступны только с одного узла. podAffinity требует поставить
-      # воркер на тот же узел (kubernetes.io/hostname), где стоит под web.
-      # На кластере из одного узла (kind, minikube, k3s на одном VPS) условие
-      # выполняется само; на многоузловом оно не даст разъехаться.
+      # The worker needs the same uploads and growth-state volumes as the web pod, and
+      # they are RWO, reachable from one node only. podAffinity requires scheduling the
+      # worker on the same node (kubernetes.io/hostname) as the web pod.
+      # On a single-node cluster (kind, minikube, k3s on one VPS) the condition is met
+      # on its own; on a multi-node one it keeps the pods from drifting apart.
       affinity:
         podAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -76,10 +76,10 @@ spec:
               mountPath: /app/uploads
             - name: growth-state
               mountPath: /app/data/growth
-          # Память воркера растёт с длиной трека: на macOS замерено ~290 МБ
-          # после старта и ~460 МБ пик на треке в 4 минуты (около 0,7 МБ на
-          # секунду аудио). Лимит 1 ГиБ — примерно до 15–17-минутного трека,
-          # дальше контейнер убьют (OOMKilled).
+          # Worker memory grows with the length of the track: on macOS we measured ~290 MB
+          # after startup and a ~460 MB peak on a 4-minute track (about 0.7 MB per
+          # second of audio). A 1 GiB limit covers a track of roughly 15-17 minutes;
+          # beyond that the container gets killed (OOMKilled).
           resources:
             requests:
               cpu: 500m
@@ -87,13 +87,13 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
-          # Пробы для воркера не задаём: HTTP у него нет. Если процесс celery
-          # завершился, Kubernetes сам перезапустит под. Для "зависшего, но
-          # живого" воркера обычно делают exec-пробу
+          # We set no probes for the worker: it has no HTTP. If the celery process
+          # exits, Kubernetes restarts the pod on its own. For a "hung but still
+          # alive" worker people usually add an exec probe
           #   celery -A app.tasks inspect ping -d celery@$HOSTNAME
-          # (импорт app.tasks дёшев — замерено ~33 МБ), но неверно настроенная
-          # liveness-проба перезапускает под посреди задачи, а на живом воркере
-          # я её не проверял — добавляйте осознанно.
+          # (importing app.tasks is cheap, we measured ~33 MB), but a badly configured
+          # liveness probe restarts the pod in the middle of a task, and I have not
+          # tested it on a live worker, so add it deliberately.
       volumes:
         - name: uploads
           persistentVolumeClaim:

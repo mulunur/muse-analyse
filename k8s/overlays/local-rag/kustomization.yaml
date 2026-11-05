@@ -1,10 +1,10 @@
-# kind / minikube с включённым RAG: база + компонент rag.
-# Без RAG для kind/minikube отдельный оверлей не нужен — применяется сама
-# база (`kubectl apply -k k8s/base`): манифесты у трёх кластеров одинаковые.
+# kind / minikube with RAG enabled: the base plus the rag component.
+# Without RAG you do not need a separate overlay for kind/minikube: the base itself
+# is applied (`kubectl apply -k k8s/base`); the manifests are the same for all three clusters.
 #
-# Образ с RAG — отдельный target Dockerfile, под тегом :rag (как в compose):
+# The image with RAG is a separate Dockerfile target, tagged :rag (as in compose):
 #   docker build --target rag -t muse-analyse:rag .
-#   kind load docker-image muse-analyse:rag        # или: minikube image load ...
+#   kind load docker-image muse-analyse:rag        # or: minikube image load ...
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

@@ -1,4 +1,4 @@
-"""Генерация музыкальных обзоров: OpenAI API, Claude, Ollama, Nemotron или шаблонный fallback."""
+"""Music review generation: through an LLM provider (OpenAI, Claude, Ollama, Nemotron) or a template fallback."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReviewSections(BaseModel):
-    """Разделы обзора; порядок полей задаёт порядок в полном тексте."""
+    """The review's sections; the field order is the order they appear in the full text."""
 
     summary: str = Field(description="Краткое резюме трека")
     rhythm: str = Field(description="Ритм и темп")
@@ -26,7 +26,7 @@ class ReviewSections(BaseModel):
 
 
 class TrackReview(BaseModel):
-    """Структура, которую LLM возвращает вместо свободного JSON."""
+    """The structure the LLM returns instead of free-form JSON."""
 
     score: float = Field(description="Оценка трека от 1 до 10")
     sections: ReviewSections
@@ -54,7 +54,7 @@ _RAG_INSTRUCTION = (
 
 
 def _compact_features(features: dict[str, Any]) -> dict[str, Any]:
-    """Признаки для промпта: без MFCC — длинный числовой вектор не нужен критику."""
+    """Features for the prompt, minus MFCC (a long numeric vector a critic has no use for)."""
     return {
         "duration_sec": features.get("duration_sec"),
         "rhythm": features.get("rhythm"),
@@ -152,7 +152,7 @@ def _dynamics_label(complexity: float | None, loudness: float | None) -> str:
 
 
 def _build_template_review(features: dict[str, Any]) -> dict[str, Any]:
-    """Шаблонный обзор на русском без внешнего API."""
+    """A template-based review in Russian that needs no external API."""
     rhythm = features.get("rhythm", {})
     tonal = features.get("tonal", {})
     dynamics = features.get("dynamics", {})
@@ -249,7 +249,7 @@ def _build_template_review(features: dict[str, Any]) -> dict[str, Any]:
 def _generate_llm_review(
     provider: LLMProvider, features: dict[str, Any], rag_context: str
 ) -> dict[str, Any]:
-    """Один вызов LLM: промпт -> модель со структурированным выводом -> словарь обзора."""
+    """One LLM call: prompt -> model with structured output -> review dict."""
     chain = _REVIEW_PROMPT | provider.structured_model(TrackReview)
     result: TrackReview = chain.invoke(
         {
@@ -264,23 +264,23 @@ def _generate_llm_review(
         "model": provider.model,
         "score": round(min(max(result.score, 1.0), 10.0), 1),
         "sections": sections,
-        # Полный текст собираем из разделов, а не просим у модели второй раз.
+        # Build the full text from the sections instead of asking the model for it a second time.
         "full_text": "\n\n".join(sections.values()),
     }
 
 
 def generate_review(features: dict[str, Any]) -> dict[str, Any]:
     """
-    Генерирует музыкальный обзор.
+    Generates a music review.
 
-    Использует LLM провайдера из конфигурации (OpenAI, Claude, Ollama, Nemotron)
-    с fallback на шаблонный обзор при ошибке.
+    Uses the LLM provider from the configuration (OpenAI, Claude, Ollama, Nemotron)
+    and falls back to a template review if something goes wrong.
 
     Args:
-        features: Словарь со всеми параметрами аудиоанализа
+        features: A dict with all the audio-analysis parameters
 
     Returns:
-        Словарь с обзором (source, language, score, sections, full_text, model)
+        A dict with the review (source, language, score, sections, full_text, model)
     """
     try:
         provider = LLMProviderFactory.get_provider()

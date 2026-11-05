@@ -1,15 +1,15 @@
-# Component — подключаемая "опция" поверх базы (аналог профиля `rag`
-# в docker-compose.yml). Сама по себе не применяется, а подключается строкой
-# `components:` из оверлея — см. overlays/local-rag (kind/minikube) и
-# закомментированный блок в overlays/k3s.
+# A Component is an optional add-on on top of the base (the equivalent of the `rag`
+# profile in docker-compose.yml). It is not applied by itself: an overlay pulls it in
+# with a `components:` line, see overlays/local-rag (kind/minikube) and
+# the commented-out block in overlays/k3s.
 #
-# Что меняет:
-#   1. образ muse-analyse:local -> muse-analyse:rag (target `rag` в Dockerfile,
-#      где доустановлены torch, sentence-transformers, chromadb);
-#   2. RAG_ENABLED=true и кэш HuggingFace на общем томе;
-#   3. подключает тома с индексом и кэшем модели к web и worker;
-#   4. поднимает лимиты памяти (воркер с RAG в замерах занимает ~1,4 ГБ);
-#   5. добавляет Job, который строит индекс из PDF.
+# What it changes:
+#   1. image muse-analyse:local -> muse-analyse:rag (the `rag` target in the Dockerfile,
+#      which also installs torch, sentence-transformers and chromadb);
+#   2. RAG_ENABLED=true and the HuggingFace cache on a shared volume;
+#   3. mounts the index and model-cache volumes into web and worker;
+#   4. raises the memory limits (the worker with RAG takes ~1.4 GB in our measurements);
+#   5. adds a Job that builds the index from the PDFs.
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 

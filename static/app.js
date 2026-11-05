@@ -175,8 +175,8 @@ function renderReview(review) {
   document.getElementById("reviewText").textContent = text;
 }
 
-// Анализ и Growth Copilot выполняются в фоне (Celery), запрос сразу
-// возвращает task_id — результат забирается опросом этого эндпоинта.
+// Analysis and Growth Copilot run in the background (Celery), and the request returns
+// a task_id right away. The result is fetched by polling this endpoint.
 async function pollTask(taskId, { intervalMs = 1500, timeoutMs = 180000 } = {}) {
   const startedAt = Date.now();
 
@@ -311,8 +311,8 @@ async function startGrowthWorkflow() {
       throw new Error(detail);
     }
 
-    // thread_id уже известен сразу — он нужен на следующем шаге (select) —
-    // а не только после того, как отработает сам граф.
+    // thread_id is known right away: it is needed for the next step (select),
+    // not only once the graph itself has finished running.
     growthState.threadId = data.thread_id;
     const result = await pollTask(data.task_id);
 

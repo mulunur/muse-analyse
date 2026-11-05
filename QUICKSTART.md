@@ -1,51 +1,61 @@
-# Quick Start Мuse Analyse
+# Quick Start: Muse Analyse
 
-# tldr:
+# tl;dr
+```
+cd /path/to/muse-analyse
+cp .env.example .env
+docker compose up --build
+```
+Then open http://localhost:8000
+
+Prefer to run it without Docker? You need Redis running, and the worker in a second terminal:
 ```
 cd /path/to/muse-analyse
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level warning --no-access-log
-```
-открыть http://localhost:8000
 
-### 1. Клонируем / открываем проект
+# in another terminal (with the same environment activated):
+celery -A app.tasks worker --loglevel=info
+```
+
+### 1. Clone / open the project
 
 ```bash
 cd /path/to/muse-analyse
 ```
 
-### 2. Конфигурация
+### 2. Configuration
 
 ```bash
 cp .env.example .env
 ```
 
-Добавьте в `.env` API-ключ выбранного LLM-провайдера. Без ключа приложение использует шаблонный fallback.
+Add the API key of your chosen LLM provider to `.env`. Without a key, the app uses the template fallback.
 
 ```bash
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-your-key-here
 ```
 
-### 3. Запуск контейнера
+### 3. Start the containers
 
 ```bash
 docker compose up --build
 ```
 
-Для старой standalone-установки Compose используйте `docker-compose` вместо `docker compose`.
+If you have the older standalone Compose, use `docker-compose` instead of `docker compose`.
 
-Открыть: **http://localhost:8000**
+Open: **http://localhost:8000**
 
-### 4. Проверка
+### 4. Check it works
 
 ```bash
 curl http://localhost:8000/api/health
 ```
 
-Логи:
+Logs:
 
 ```bash
 docker compose logs -f muse-analyse
@@ -53,144 +63,159 @@ docker compose logs -f muse-analyse
 
 ---
 
-## Использование
+## Usage
 
-### Веб-интерфейс
+### Web interface
 
-1. Перетащите MP3/WAV/FLAC/OGG/M4A на главную страницу
-2. Ждите анализа (1-3 мин в зависимости от длины трека)
-3. Получите параметры + AI-обзор
+1. Drag an MP3/WAV/FLAC/OGG/M4A onto the main page
+2. Wait for the analysis (up to a minute or two, depending on the track and your machine)
+3. Get the parameters + an AI review
 
 ### API
 
 ```bash
-# Проверить доступные провайдеры
+# Check which providers are available
 curl http://localhost:8000/api/providers
 
-# Загрузить трек
+# Upload a track (returns a task_id)
 curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze
+
+# Fetch the result
+curl http://localhost:8000/api/tasks/<task_id>
 ```
 
 ---
 
-## Документация
+## Documentation
 
-- **[README.md](README.md)** — основная информация
-- **[LLM_PROVIDERS.md](LLM_PROVIDERS.md)** — подробно по каждому провайдеру
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — для разработчиков
-- **[CHANGELOG.md](CHANGELOG.md)** — что нового в v1.1.0
-- **[MCP_INTEGRATION.md](MCP_INTEGRATION.md)** — интеграция с Claude Desktop
+- **[README.md](README.md)**: the main information
+- **[LLM_PROVIDERS.md](LLM_PROVIDERS.md)**: every provider in detail
+- **[ARCHITECTURE.md](ARCHITECTURE.md)**: for developers
+- **[CHANGELOG.md](CHANGELOG.md)**: what's new in v1.1.0
+- **[MCP_INTEGRATION.md](MCP_INTEGRATION.md)**: integration with Claude Desktop
 
 ---
 
-## RAG-профиль
+## The RAG profile
 
-Базовый контейнер запускается без тяжёлых RAG-зависимостей. Для RAG:
+The base container starts without the heavy RAG dependencies. For RAG:
 
 ```bash
 docker compose down
-docker compose --profile rag up --build muse-analyse-rag
+docker compose --profile rag up --build muse-analyse-rag worker-rag
 docker compose --profile rag run --rm muse-analyse-rag python scripts/index_knowledge.py
 ```
 
-Индекс сохраняется в Docker volume.
+The index is stored in a Docker volume.
 
-## Разрешение проблем
+## Troubleshooting
 
-### Essentia не установилась
+### Essentia did not install
 
 ```bash
 docker compose logs muse-analyse
 docker compose build --no-cache muse-analyse
 ```
 
-### API ключ не работает
+### The API key does not work
 
 ```bash
-# Проверьте конфиг
+# Check the config
 curl http://localhost:8000/api/health
 
-# Ключ должен быть в поле llm_providers
+# The provider should show up as true under llm_providers
 ```
 
-### Ollama недоступна
+### Ollama is not reachable
 
-Проверьте, что Ollama доступна из контейнера, и укажите корректный `OLLAMA_BASE_URL`.
+Make sure Ollama is reachable from inside the container, and set a correct `OLLAMA_BASE_URL`.
 
-### Медленный анализ
+### The analysis is slow
 
-Это нормально! Essentia обрабатывает весь аудиофайл:
-- 3 мин трека = 45-120 сек анализа
-- + 5-45 сек LLM ответ
-
----
-
-## Переключение провайдера во время работы
-
-Достаточно:
-1. Отредактировать `.env` (изменить `LLM_PROVIDER`)
-2. Пересоздать контейнер: `docker compose up -d --force-recreate`
-
-Никакой переустановки не нужна.
+That is normal! Essentia processes the whole audio file:
+- the time grows with the length of the track (a few seconds on a fast machine, a minute or two on a small server)
+- plus 5-45 s for the LLM's answer
 
 ---
 
-## Рекомендации
+## Switching the provider while running
 
-| Ситуация | Команда |
-|----------|---------|
-| Первый запуск | `LLM_PROVIDER=openai` |
-| Хочу сэкономить | `LLM_PROVIDER=ollama` |
-| Хочу лучший результат | `LLM_PROVIDER=claude` |
-| Работаю локально | `LLM_PROVIDER=ollama` |
-| Production | `LLM_PROVIDER=openai` или `nemotron` |
+All you need to do:
+1. Edit `.env` (change `LLM_PROVIDER`)
+2. Re-create the containers: `docker compose up -d --force-recreate`
+
+No reinstalling is needed.
 
 ---
 
-## Возможности MCP (опционально)
+## Recommendations
 
-Если хотите использовать анализ в Claude Desktop:
-
-1. Установите MCP SDK: `pip install mcp httpx`
-2. Скопируйте `mcp_server.py` в проект (см. MCP_INTEGRATION.md)
-3. Добавьте в Claude Desktop конфиг
-4. Используйте инструменты прямо в Claude
+| Situation | Setting |
+|-----------|---------|
+| First run | `LLM_PROVIDER=openai` |
+| I want to save money | `LLM_PROVIDER=ollama` |
+| I want the best result | `LLM_PROVIDER=claude` |
+| I am working locally | `LLM_PROVIDER=ollama` |
+| Production | `LLM_PROVIDER=openai` or `nemotron` |
 
 ---
 
-## Примеры на Python
+## MCP support (optional)
+
+If you want to use the analysis inside Claude Desktop:
+
+1. Install the MCP SDK: `pip install mcp httpx`
+2. Copy `mcp_server.py` into the project (see MCP_INTEGRATION.md)
+3. Add it to the Claude Desktop config
+4. Use the tools right inside Claude
+
+---
+
+## Python example
 
 ```python
+import time
 import requests
 
-# Проверить статус
-response = requests.get("http://localhost:8000/api/health")
-print(response.json())
+BASE = "http://localhost:8000"
 
-# Загрузить трек
+# Check the status
+print(requests.get(f"{BASE}/api/health").json())
+
+# Upload a track; this returns a task_id right away
 with open("track.mp3", "rb") as f:
-    files = {"file": f}
-    response = requests.post("http://localhost:8000/api/analyze", files=files)
-    result = response.json()
-    print(f"Оценка: {result['review']['score']}/10")
-    print(f"Обзор: {result['review']['full_text']}")
+    task_id = requests.post(f"{BASE}/api/analyze", files={"file": f}).json()["task_id"]
+
+# Poll until the analysis is finished
+while True:
+    status = requests.get(f"{BASE}/api/tasks/{task_id}").json()
+    if status["status"] != "pending":
+        break
+    time.sleep(2)
+
+if status["status"] == "done":
+    review = status["result"]["review"]
+    print(f"Score: {review['score']}/10")
+    print(f"Review: {review['full_text']}")
+else:
+    print("Error:", status["error"])
 ```
 
 ---
 
-## API документация
+## API documentation
 
-Полная интерактивная документация: **http://localhost:8000/docs**
-
----
-
-## Нужна помощь?
-
-1. Прочитайте [ARCHITECTURE.md](ARCHITECTURE.md)
-2. Проверьте логи сервера
-3. Запустите тесты: `pytest tests/ -v`
-4. Проверьте конфиг: `curl http://localhost:8000/api/health`
+Full interactive documentation: **http://localhost:8000/docs**
 
 ---
 
-**Готовы к использованию!** 🎵
+## Need help?
+
+1. Read [ARCHITECTURE.md](ARCHITECTURE.md)
+2. Check the server logs
+3. Run the tests: `pytest tests/ -v`
+4. Check the config: `curl http://localhost:8000/api/health`
+
+---
+
+**You are ready to go!** 🎵

@@ -1,10 +1,10 @@
-"""Тесты задач Celery.
+"""Tests for the Celery tasks.
 
-Основная часть вызывает функции задач напрямую (без брокера — Celery-задача
-остаётся обычной вызываемой функцией) и подменяет тяжёлые зависимости через
-monkeypatch. Один тест внизу — настоящая сквозная проверка через реальный
-Celery в eager-режиме и реальный Redis; он пропускается, если Redis недоступен,
-как уже принято в этом проекте для Essentia/Ollama.
+Most of them call the task functions directly (without a broker: a Celery task
+is still an ordinary callable function) and replace the heavy dependencies with
+monkeypatch. One test at the bottom is a real end-to-end check through real
+Celery in eager mode and a real Redis; it is skipped if Redis is unavailable,
+as is already the custom in this project for Essentia and Ollama.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ class FakeSnapshot:
 
 
 class FakeGraph:
-    """Подмена growth_graph: запоминает вызовы invoke(), не трогает LLM/checkpointer."""
+    """A stand-in for growth_graph: records invoke() calls and does not touch the LLM or the checkpointer."""
 
     def __init__(self, state_after_invoke: dict, invoke_error: Exception | None = None):
         self._state = state_after_invoke
@@ -115,8 +115,8 @@ class TestGrowthStartTask:
             rationale="Обоснование",
             voice_alignment="Совпадает",
         )
-        # snapshot.values отдаёт content_ideas как объекты Pydantic, а не dict —
-        # именно это ломает json.dumps без явного model_dump.
+        # snapshot.values returns content_ideas as Pydantic objects, not dicts,
+        # and that is exactly what breaks json.dumps without an explicit model_dump.
         fake_graph = FakeGraph({"content_ideas": [idea]})
         monkeypatch.setattr("app.agents.graph.growth_graph", fake_graph)
 
@@ -126,7 +126,7 @@ class TestGrowthStartTask:
         assert result["thread_id"] == "thread-1"
         assert result["content_ideas"] == [idea.model_dump(mode="json")]
         assert isinstance(result["content_ideas"][0], dict)
-        # Файл нужен следующему шагу (select) — здесь при успехе не удаляется.
+        # The next step (select) needs the file, so on success it is not deleted here.
         assert audio_path.exists()
 
     def test_failure_deletes_uploaded_file(self, monkeypatch, tmp_path):
@@ -156,8 +156,8 @@ class TestGrowthSelectTask:
     def test_failure_still_cleans_up_audio(self, monkeypatch, tmp_path):
         audio_path = tmp_path / "a.mp3"
         audio_path.write_bytes(b"x")
-        # get_state читает то, что уже успело закрепиться в чекпойнте (включая
-        # исходный audio_path), даже если сам invoke() упал.
+        # get_state reads whatever already made it into the checkpoint (including the
+        # original audio_path), even if invoke() itself crashed.
         fake_graph = FakeGraph({"audio_path": str(audio_path)}, invoke_error=ValueError("критик упал"))
         monkeypatch.setattr("app.agents.graph.growth_graph", fake_graph)
 
@@ -186,12 +186,12 @@ print(json.dumps({"ready": fresh.ready(), "failed": fresh.failed(), "result": fr
 
 @pytest.mark.skipif(not REDIS_AVAILABLE, reason=f"Redis недоступен на {CELERY_BROKER_URL}")
 def test_task_roundtrip_through_real_celery_and_redis():
-    """Проверяет реальный путь .delay() -> Redis -> свежий AsyncResult(id),
-    как это делает GET /api/tasks/{task_id} — без мока, с настоящим брокером.
+    """Checks the real path .delay() -> Redis -> a fresh AsyncResult(id),
+    just like GET /api/tasks/{task_id} does, with no mocks and with a real broker.
 
-    Запускается в отдельном процессе: task_always_eager/task_store_eager_result
-    у Celery можно понять только на старте приложения, а не переключить на
-    лету у уже импортированного модуля — см. комментарий в app/tasks.py.
+    It runs in a separate process: Celery only lets you set
+    task_always_eager / task_store_eager_result when the app starts, you cannot
+    switch them on the fly in a module that is already imported. See the comment in app/tasks.py.
     """
     import json
     import subprocess

@@ -1,101 +1,101 @@
-# Changelog — Поддержка нескольких LLM провайдеров
+# Changelog: support for multiple LLM providers
 
-## v1.1.0 — Множественные LLM провайдеры (2024)
+## v1.1.0: multiple LLM providers (2024)
 
-### 🎯 Основные изменения
+### 🎯 Main changes
 
-#### ✨ Новые провайдеры LLM
+#### ✨ New LLM providers
 
-Добавлена поддержка четырёх LLM провайдеров:
+Support for four LLM providers was added:
 
 1. **OpenAI GPT** (`openai`)
-   - Модели: gpt-4o-mini, gpt-4, gpt-4-turbo
-   - Статус: платно
-   - Документация: https://platform.openai.com/api-keys
+   - Models: gpt-4o-mini, gpt-4, gpt-4-turbo
+   - Cost: paid
+   - Docs: https://platform.openai.com/api-keys
 
 2. **Anthropic Claude** (`claude`)
-   - Модели: claude-3-5-sonnet, claude-3-opus
-   - Статус: платно
-   - Документация: https://console.anthropic.com/
+   - Models: claude-3-5-sonnet, claude-3-opus
+   - Cost: paid
+   - Docs: https://console.anthropic.com/
 
-3. **Ollama локальный** (`ollama`)
-   - Модели: mistral, llama2, neural-chat, orca-mini и другие
-   - Статус: бесплатно (локальный запуск)
-   - Документация: https://ollama.ai/
+3. **Ollama, run locally** (`ollama`)
+   - Models: mistral, llama2, neural-chat, orca-mini and others
+   - Cost: free (runs on your own machine)
+   - Docs: https://ollama.ai/
 
 4. **NVIDIA Nemotron** (`nemotron`)
-   - Модели: meta/llama-2-70b-chat и другие
-   - Статус: платно / Free tier
-   - Документация: https://docs.nvidia.com/
+   - Models: meta/llama-2-70b-chat and others
+   - Cost: paid / free tier
+   - Docs: https://docs.nvidia.com/
 
-### 📁 Новые файлы
+### 📁 New files
 
-- **`app/llm_providers.py`** — модуль с реализацией всех провайдеров
-  - `LLMProvider` — абстрактный базовый класс
-  - `OpenAIProvider`, `ClaudeProvider`, `OllamaProvider`, `NemotronProvider` — конкретные реализации
-  - `LLMProviderFactory` — фабрика для создания провайдеров
+- **`app/llm_providers.py`**: the module with every provider's implementation
+  - `LLMProvider`: the abstract base class
+  - `OpenAIProvider`, `ClaudeProvider`, `OllamaProvider`, `NemotronProvider`: the concrete implementations
+  - `LLMProviderFactory`: a factory that creates providers
 
-- **`LLM_PROVIDERS.md`** — подробная документация по конфигурации каждого провайдера
+- **`LLM_PROVIDERS.md`**: detailed documentation on configuring each provider
 
-- **`ARCHITECTURE.md`** — описание архитектуры проекта
+- **`ARCHITECTURE.md`**: a description of the project's architecture
 
-- **`MCP_INTEGRATION.md`** — гайд по интеграции как MCP сервера
+- **`MCP_INTEGRATION.md`**: a guide to using the project as an MCP server
 
-- **`examples_test_providers.py`** — примеры использования API
+- **`examples_test_providers.py`**: examples of using the API
 
-- **`tests_test_llm_providers.py`** — тесты для провайдеров и API
+- **`tests_test_llm_providers.py`**: tests for the providers and the API
 
-### 🔄 Изменения в существующих файлах
+### 🔄 Changes to existing files
 
 #### `app/config.py`
-- Добавлены новые переменные конфигурации для каждого провайдера:
-  - `LLM_PROVIDER` — выбор провайдера (по умолчанию "openai")
+- New configuration variables for each provider:
+  - `LLM_PROVIDER`: which provider to use ("openai" by default)
   - `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`
   - `OLLAMA_BASE_URL`, `OLLAMA_MODEL`
   - `NEMOTRON_API_KEY`, `NEMOTRON_MODEL`, `NEMOTRON_BASE_URL`
   - `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`
-- Добавлены константы `SUPPORTED_PROVIDERS`
+- Added the `SUPPORTED_PROVIDERS` constant
 
 #### `app/review_generator.py`
-- Полностью переписана функция `generate_review()`
-- Теперь использует `LLMProviderFactory.get_provider()` вместо прямого вызова OpenAI
-- Автоматический fallback на шаблонный обзор при ошибке любого провайдера
+- The `generate_review()` function was rewritten from scratch
+- It now uses `LLMProviderFactory.get_provider()` instead of calling OpenAI directly
+- It falls back to a template review automatically if any provider fails
 
 #### `app/main.py`
-- Добавлен импорт `LLMProviderFactory`
-- Обновлён эндпоинт `GET /api/health` — добавлено поле `llm_providers`
-- Добавлен новый эндпоинт `GET /api/providers` — возвращает список доступных провайдеров
+- Added the `LLMProviderFactory` import
+- Updated the `GET /api/health` endpoint with an `llm_providers` field
+- Added a new `GET /api/providers` endpoint that returns the available providers
 
 #### `.env.example`
-- Полностью переписан со всеми примерами конфигурации для каждого провайдера
+- Fully rewritten, with a configuration example for every provider
 
 #### `requirements.txt`
-- Добавлены: `anthropic>=0.30.0`, `requests>=2.31.0`
-- Добавлены для тестирования: `pytest>=7.0.0`, `pytest-asyncio>=0.21.0`
+- Added: `anthropic>=0.30.0`, `requests>=2.31.0`
+- Added for testing: `pytest>=7.0.0`, `pytest-asyncio>=0.21.0`
 
 #### `README.md`
-- Переписан раздел о возможностях
-- Добавлена таблица провайдеров с рекомендациями
-- Обновлены примеры API
-- Ссылки на новую документацию
+- The features section was rewritten
+- Added a table of providers with recommendations
+- Updated the API examples
+- Added links to the new documentation
 
-### 🏗️ Архитектурные улучшения
+### 🏗️ Architecture improvements
 
-1. **Паттерн Factory** — централизованное управление провайдерами
-2. **Абстрактный интерфейс `LLMProvider`** — легко добавлять новые провайдеры
-3. **Автоматическая проверка доступности** — каждый провайдер знает, доступен ли он
-4. **Graceful fallback** — всегда работает на шаблонах даже без API
+1. **Factory pattern**: providers are managed in one place
+2. **Abstract `LLMProvider` interface**: new providers are easy to add
+3. **Automatic availability check**: every provider knows whether it is available
+4. **Graceful fallback**: it always works with templates, even with no API
 
-### 🔌 API изменения
+### 🔌 API changes
 
-#### Новый эндпоинт: `GET /api/providers`
+#### New endpoint: `GET /api/providers`
 
-**Запрос:**
+**Request:**
 ```bash
 curl http://localhost:8000/api/providers
 ```
 
-**Ответ:**
+**Response:**
 ```json
 {
   "available": {
@@ -113,9 +113,11 @@ curl http://localhost:8000/api/providers
 }
 ```
 
-#### Обновлённый эндпоинт: `GET /api/health`
+(The descriptions are the app's own Russian strings; they mean "requires OPENAI_API_KEY", "requires ANTHROPIC_API_KEY", "local Ollama (requires ollama serve)" and "requires NEMOTRON_API_KEY".)
 
-Теперь возвращает статус каждого провайдера:
+#### Updated endpoint: `GET /api/health`
+
+It now returns the status of every provider:
 ```json
 {
   "status": "ok",
@@ -131,9 +133,9 @@ curl http://localhost:8000/api/providers
 }
 ```
 
-#### `POST /api/analyze` ответ
+#### `POST /api/analyze` response
 
-Поле `review` теперь содержит информацию о провайдере:
+The `review` field now says which provider produced it:
 ```json
 {
   "review": {
@@ -147,107 +149,107 @@ curl http://localhost:8000/api/providers
 }
 ```
 
-### 📚 Документация
+### 📚 Documentation
 
-Добавлены новые файлы:
-- **LLM_PROVIDERS.md** — полный гайд по каждому провайдеру с примерами конфигурации
-- **ARCHITECTURE.md** — технический документ для разработчиков
-- **MCP_INTEGRATION.md** — как использовать как MCP сервер в Claude Desktop
+New files:
+- **LLM_PROVIDERS.md**: a full guide to every provider, with configuration examples
+- **ARCHITECTURE.md**: a technical document for developers
+- **MCP_INTEGRATION.md**: how to use the project as an MCP server in Claude Desktop
 
-### ✅ Тестирование
+### ✅ Testing
 
-Добавлены тесты:
-- Проверка загрузки конфигурации
-- Проверка инициализации фабрики провайдеров
-- Проверка доступности каждого провайдера
-- Проверка обработки ошибок
-- Проверка построения промптов
-- Проверка генерации шаблонного обзора
-- Проверка API эндпоинтов
+Tests were added for:
+- Loading the configuration
+- Initialising the provider factory
+- Each provider's availability
+- Error handling
+- Building prompts
+- Generating the template review
+- The API endpoints
 
-**Запуск тестов:**
+**Running the tests:**
 ```bash
 pytest tests/ -v
 ```
 
-### 🔒 Безопасность
+### 🔒 Security
 
-- API ключи не логируются
-- Временные аудиофайлы удаляются после анализа
-- Ollama — локальный запуск означает отсутствие отправки данных в интернет
+- API keys are not logged
+- Temporary audio files are deleted after analysis
+- Ollama runs locally, so no data is sent to the internet
 
-### 📊 Рекомендации по использованию
+### 📊 Usage recommendations
 
-| Сценарий | Рекомендуемый провайдер |
-|----------|--------------------------|
-| Быстрый старт | OpenAI (gpt-4o-mini) |
-| Высокое качество анализа | Claude (claude-3-5-sonnet) |
-| Приватный анализ | Ollama (mistral) |
-| Бюджетный вариант | Ollama (бесплатно) |
-| Production на GPU | Nemotron |
+| Scenario | Recommended provider |
+|----------|----------------------|
+| A quick start | OpenAI (gpt-4o-mini) |
+| High-quality analysis | Claude (claude-3-5-sonnet) |
+| Private analysis | Ollama (mistral) |
+| A budget option | Ollama (free) |
+| Production on a GPU | Nemotron |
 
-### 🚀 Примеры использования
+### 🚀 Usage examples
 
-#### Переключение провайдера
+#### Switching providers
 ```bash
-# Отредактируйте .env
+# Edit .env
 LLM_PROVIDER=claude
 ANTHROPIC_API_KEY=sk-ant-xxxxxxx
 
-# Перезагрузите сервер
+# Restart the server
 python run.py
 ```
 
-#### Проверка доступности
+#### Checking availability
 ```bash
 curl http://localhost:8000/api/providers | jq
 ```
 
-#### Анализ с текущим провайдером
+#### Analysing with the current provider
 ```bash
 curl -X POST -F "file=@track.mp3" http://localhost:8000/api/analyze
 ```
 
-### 🔄 Обратная совместимость
+### 🔄 Backward compatibility
 
-Все изменения 100% обратно совместимы:
-- Если `OPENAI_API_KEY` установлен, используется OpenAI (как было раньше)
-- Если `LLM_PROVIDER` не задан, используется "openai" по умолчанию
-- Если провайдер недоступен, автоматический fallback на шаблон
+Every change is 100% backward compatible:
+- If `OPENAI_API_KEY` is set, OpenAI is used (as before)
+- If `LLM_PROVIDER` is not set, "openai" is the default
+- If a provider is not available, it falls back to the template automatically
 
-### ⚡ Производительность
+### ⚡ Performance
 
-Нет изменений в производительности. Время анализа остаётся тем же:
-- Essentia: 45-120 сек (не изменилось)
-- LLM ответ: 5-45 сек в зависимости от провайдера
+There is no change in performance. Analysis time stays the same:
+- Essentia: 45-120 s (unchanged)
+- LLM response: 5-45 s depending on the provider
 
-### 🐛 Исправления
+### 🐛 Fixes
 
-- Более надёжная обработка ошибок при недоступности провайдера
-- Лучшее логирование для отладки
+- More reliable error handling when a provider is unavailable
+- Better logging for debugging
 
-### 📝 Миграция со старой версии
+### 📝 Migrating from an older version
 
-Если вы обновляете с v1.0.0:
+If you are upgrading from v1.0.0:
 
-1. **Установите новые зависимости:**
+1. **Install the new dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Обновите .env:**
+2. **Update .env:**
    ```bash
    cp .env.example .env
-   # Отредактируйте .env
+   # Edit .env
    ```
 
-3. **Всё готово!** Ваш существующий `OPENAI_API_KEY` будет работать как раньше.
+3. **That's it!** Your existing `OPENAI_API_KEY` keeps working as before.
 
-Ничего менять не требуется, система автоматически распознает старую конфигурацию.
+Nothing else needs to change; the system recognises the old configuration on its own.
 
 ---
 
-## Благодарности
+## Acknowledgements
 
-- Essentia — за мощный анализ аудио
-- OpenAI, Anthropic, NVIDIA, Ollama — за доступ к моделям
+- Essentia, for the powerful audio analysis
+- OpenAI, Anthropic, NVIDIA and Ollama, for access to their models

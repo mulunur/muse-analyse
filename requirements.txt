@@ -6,7 +6,7 @@ aiofiles>=24.1.0
 essentia-tensorflow==2.1b6.dev1389
 numpy>=1.24.0
 
-# LLM провайдеры
+# LLM providers
 openai>=1.55.0
 anthropic>=0.30.0
 requests>=2.31.0
@@ -20,14 +20,14 @@ langchain-anthropic>=0.3.0
 langchain-ollama>=0.3.0
 tavily-python>=0.5.0
 
-# Очередь задач
+# Task queue
 celery[redis]>=5.4.0
 
-# MCP сервер
+# MCP server
 mcp>=0.1.0
 httpx>=0.24.0
 
-# Тестирование
+# Testing
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
 

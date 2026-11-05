@@ -1,16 +1,16 @@
-"""Кейсы для eval: "вход -> что мы ожидаем от результата".
+"""Eval cases: "input -> what we expect from the result".
 
-Это и есть "набор данных" eval. Чтобы добавить проверку, допишите словарь в
-нужный список ниже — больше ничего менять не нужно.
+This is the eval "dataset". To add a check, append a dict to the right list
+below; nothing else needs to change.
 """
 
 
 def _features(*, bpm, key, scale, key_strength, energy, lufs, dynamics, danceability,
               brightness=0.4, duration=200.0):
-    """Собирает словарь признаков в том же виде, в каком его отдаёт analyze_audio().
+    """Builds a features dict in the same shape that analyze_audio() returns.
 
-    Аудиофайлы для eval не нужны: обзор строится только по этим числам.
-    None означает "Essentia не смогла посчитать этот параметр".
+    Eval needs no audio files: the review is built from these numbers alone.
+    None means "Essentia could not compute this parameter".
     """
     return {
         "duration_sec": duration,
@@ -24,10 +24,10 @@ def _features(*, bpm, key, scale, key_strength, energy, lufs, dynamics, danceabi
     }
 
 
-# --- Обзор трека: generate_review(features) --------------------------------
-# expect (необязательно):
-#   bpm     - число, которое обзор должен упомянуть (проверка "опирается на параметры")
-#   no_lufs - True, если громкость неизвестна и обзор не должен выдумывать LUFS
+# --- Track review: generate_review(features) --------------------------------
+# expect (optional):
+#   bpm     - a number the review should mention (checks that it "relies on the parameters")
+#   no_lufs - True if the loudness is unknown and the review must not invent LUFS
 REVIEW_CASES = [
     {
         "id": "fast_electronic",
@@ -44,14 +44,14 @@ REVIEW_CASES = [
         "expect": {"bpm": 62},
     },
     {
-        # Essentia не посчитала громкость и танцевальность: модель не должна их придумывать.
+        # Essentia could not compute loudness and danceability: the model must not invent them.
         "id": "missing_data",
         "features": _features(bpm=100, key="D", scale="minor", key_strength=0.5,
                               energy=0.5, lufs=None, dynamics=None, danceability=None),
         "expect": {"bpm": 100, "no_lufs": True},
     },
     {
-        # Реальные числа, снятые с одного из треков, — аудио в кейсе нет.
+        # Real numbers taken from one of the tracks; there is no audio in the case.
         "id": "real_track_example",
         "features": _features(bpm=123.06, key="F", scale="major", key_strength=0.7248,
                               energy=0.5363, lufs=-9.15, dynamics=4.2887, danceability=0.37,
@@ -61,9 +61,9 @@ REVIEW_CASES = [
 ]
 
 
-# --- Критик: critique_agent(state) -----------------------------------------
-# Здесь правильный ответ известен заранее — мы сами его задали.
-# expect_passed: должен ли критик пропустить черновик (True) или забраковать (False).
+# --- Critic: critique_agent(state) -----------------------------------------
+# The right answer is known in advance here, because we set it ourselves.
+# expect_passed: whether the critic should let the draft through (True) or reject it (False).
 _PROFILE = {
     "tone": "тёплый, интимный",
     "themes": ["ночной город", "одиночество"],
@@ -72,10 +72,11 @@ _PROFILE = {
 
 CRITIQUE_CASES = [
     {
-        # Первая версия этого кейса заканчивалась фразой "Новый трек уже на всех
-        # площадках" — критик забраковал её как слишком коммерческую для тёплого
-        # интимного тона, и по делу. Ошибся не критик, а кейс: провал eval не
-        # всегда значит "модель плохая", иногда плох сам тест. Фразу убрали.
+        # The first version of this case ended with the sentence "The new track is
+        # already on all platforms". The critic rejected it as too commercial for a
+        # warm, intimate tone, and rightly so. The case was wrong, not the critic:
+        # a failing eval does not always mean "the model is bad", sometimes the test
+        # itself is bad. The sentence was removed.
         "id": "clean_draft_1",
         "profile": _PROFILE,
         "drafts": {"d1": "Ночной город засыпает, а я пишу песню о том, как тихо бывает "
@@ -102,7 +103,7 @@ CRITIQUE_CASES = [
         "expect_passed": False,
     },
     {
-        # Слов из запрета нет, но тон и темы совсем не те: это сложнее первых четырёх.
+        # No forbidden words, but the tone and the themes are completely off: harder than the first four.
         "id": "off_tone_sales_pitch",
         "profile": _PROFILE,
         "drafts": {"d1": "Покупайте наш мерч со скидкой 50%! Только сегодня, успейте!!!"},

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Примеры использования разных LLM провайдеров через Muse Analyse API
+Examples of using different LLM providers through the Muse Analyse API
 """
 
 import json
@@ -9,14 +9,14 @@ from pathlib import Path
 
 
 def check_available_providers():
-    """Проверяет какие провайдеры доступны."""
+    """Checks which providers are available."""
     response = requests.get("http://localhost:8000/api/providers")
     print("Доступные LLM провайдеры:")
     print(json.dumps(response.json(), indent=2, ensure_ascii=False))
 
 
 def analyze_audio_file(file_path: str):
-    """Отправляет аудиофайл на анализ."""
+    """Sends an audio file for analysis."""
     if not Path(file_path).exists():
         print(f"Ошибка: файл {file_path} не найден")
         return
@@ -28,13 +28,13 @@ def analyze_audio_file(file_path: str):
     if response.status_code == 200:
         result = response.json()
         
-        # Информация об обзоре
+        # Review info
         review = result.get("review", {})
         print(f"\n📊 Обзор от провайдера: {review.get('source')} ({review.get('model', 'unknown')})")
         print(f"⭐ Оценка: {review.get('score', 'N/A')}/10")
         print(f"\n{review.get('full_text', 'Обзор недоступен')}")
         
-        # Основные параметры
+        # Main parameters
         features = result.get("features", {})
         print(f"\n📈 Основные параметры:")
         print(f"  • Длительность: {features.get('duration_sec')} сек")
@@ -49,11 +49,11 @@ def analyze_audio_file(file_path: str):
 
 def compare_providers():
     """
-    Сравнивает результаты разных провайдеров для одного трека.
+    Compares the results of different providers for one track.
     
-    Требует, чтобы файл был доступен локально для каждого запроса.
+    Needs the file to be available locally for every request.
     """
-    # Сначала проверяем доступность
+    # First check availability
     providers_response = requests.get("http://localhost:8000/api/providers")
     available = providers_response.json()["available"]
     

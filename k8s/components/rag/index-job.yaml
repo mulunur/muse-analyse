@@ -1,11 +1,11 @@
-# Job — одноразовая задача "выполни и завершись" (в отличие от Deployment,
-# который держит под запущенным всегда). Аналог команды из README:
+# A Job is a one-off task, "run and finish" (unlike a Deployment, which keeps a
+# pod running all the time). The equivalent of the command from the README:
 #   docker compose --profile rag run --rm muse-analyse-rag python scripts/index_knowledge.py
 #
-# Повторный запуск (например, после смены PDF): Job менять нельзя, поэтому
+# To run it again (for example after the PDF changes): a Job cannot be modified, so
 #   kubectl -n muse-analyse delete job index-knowledge
-#   kubectl apply -k <ваш оверлей>
-# Посмотреть ход: kubectl -n muse-analyse logs job/index-knowledge -f
+#   kubectl apply -k <your overlay>
+# Follow the progress: kubectl -n muse-analyse logs job/index-knowledge -f
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -15,8 +15,8 @@ metadata:
     app.kubernetes.io/component: index-knowledge
     app.kubernetes.io/part-of: muse-analyse
 spec:
-  # Не перезапускать бесконечно при ошибке (например, нет сети для скачивания
-  # модели): одна повторная попытка, дальше смотрим логи.
+  # Do not restart forever on failure (for example when there is no network to download
+  # the model): one retry, after that look at the logs.
   backoffLimit: 1
   template:
     metadata:
@@ -33,8 +33,8 @@ spec:
         fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
-      # Тома rag-index и hf-cache — RWO, поэтому Job должен оказаться на том же
-      # узле, что и web (см. такой же блок в worker.yaml).
+      # The rag-index and hf-cache volumes are RWO, so the Job has to land on the same
+      # node as web (see the same block in worker.yaml).
       affinity:
         podAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -45,10 +45,10 @@ spec:
                   app.kubernetes.io/component: web
       containers:
         - name: index-knowledge
-          image: muse-analyse:local   # компонент подменяет тег на :rag
+          image: muse-analyse:local   # the component swaps the tag to :rag
           imagePullPolicy: IfNotPresent
           command: ["python", "scripts/index_knowledge.py"]
-          # --force пересоздаёт индекс с нуля (идемпотентный запуск).
+          # --force rebuilds the index from scratch (so running it again is safe).
           args: ["--force"]
           envFrom:
             - configMapRef:

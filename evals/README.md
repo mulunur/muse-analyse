@@ -1,39 +1,36 @@
-# Eval для Muse Analyse — первый опыт
+# Evals for Muse Analyse: a first try
 
-## Что это
+## What this is
 
-Eval — это «тесты для LLM». Обычный тест говорит «функция вернула ровно 5». Но LLM
-отвечает каждый раз по-разному, поэтому проверяют не точный текст, а **свойства**
-ответа: он по-русски? оценка в пределах 1–10? критик забраковал черновик с
-запрещённым словом?
+An eval is "tests for an LLM". A normal test says "the function returned exactly 5". But an LLM answers differently every time, so instead of the exact text you check **properties** of the answer: is it in Russian? Is the score between 1 and 10? Did the critic reject a draft that contains a forbidden word?
 
-Из чего состоит наш eval:
+Our eval is made of:
 
-1. **Кейсы** (`cases.py`) — входные данные и то, чего мы от результата ждём.
-2. **Прогон** (`run_evals.py`) — кейсы пропускаются через настоящий код проекта
-   (`generate_review`, `critique_agent`) и настоящую LLM.
-3. **Проверки** — функции в `run_evals.py`, которые смотрят на ответ и говорят ✓/✗.
-4. **Отчёт** — сколько проверок прошло, плюс подробности в `evals/results/`.
+1. **Cases** (`cases.py`): the input data and what we expect from the result.
+2. **A run** (`run_evals.py`): the cases are pushed through the real project code (`generate_review`, `critique_agent`) and a real LLM.
+3. **Checks**: functions in `run_evals.py` that look at the answer and say ✓ or ✗.
+4. **A report**: how many checks passed, plus the details in `evals/results/`.
 
-## Запуск
+## Running it
 
-Из корня проекта, с активированным окружением (`source .venv/bin/activate`):
+From the project root, with the environment activated (`source .venv/bin/activate`):
 
 ```bash
-# с локальной Ollama (бесплатно, но медленно: ~30 с на обзор)
+# with a local Ollama (free, but slow: ~30 s per review)
 LLM_PROVIDER=ollama OLLAMA_MODEL=gemma4:latest python evals/run_evals.py
 
-# только критик (быстро, 1–2 минуты)
+# the critic only (fast, 1-2 minutes)
 LLM_PROVIDER=ollama OLLAMA_MODEL=gemma4:latest python evals/run_evals.py --suite critique
 
-# один кейс, 3 раза (смотрим, насколько ответ стабилен)
+# one case, 3 times (to see how stable the answer is)
 LLM_PROVIDER=ollama OLLAMA_MODEL=gemma4:latest python evals/run_evals.py --case slow_ballad --repeat 3
 ```
 
-Если провайдер не настроен, скрипт скажет об этом сразу. С облачной моделью —
-`LLM_PROVIDER=claude` и ключ в `.env`.
+If no provider is configured, the script tells you right away. With a cloud model, use `LLM_PROVIDER=claude` and put the key in `.env`.
 
-## Как читать вывод
+## Reading the output
+
+The script prints in Russian, so a real failure looks like this (the suite is "критик" = "critic", "вывод" = "output"):
 
 ```
 [критик] clean_draft_1  (10 с)
@@ -42,59 +39,37 @@ LLM_PROVIDER=ollama OLLAMA_MODEL=gemma4:latest python evals/run_evals.py --case 
    вывод: {"passed": false, "feedback": "..."}
 ```
 
-Для каждого кейса — список проверок. У проваленной есть пояснение и кусок вывода.
-В конце — итог по каждой проверке («4/5» — прошла в четырёх кейсах из пяти).
+Every case gets a list of checks. A failed check comes with an explanation and a piece of the output. At the end you get a total for each check ("4/5" means it passed in four cases out of five).
 
-**Провал не всегда значит «модель плохая».** Это один из трёх случаев:
-1. модель действительно ошиблась;
-2. проверка слишком строгая или грубая (например, `mentions_bpm` ищет число
-   только в пределах ±5 от нужного);
-3. сам кейс неудачный. Так было с первым прогоном: «чистый» черновик заканчивался
-   рекламной фразой, критик на неё справедливо придрался — пришлось править кейс.
-   История записана комментарием в `cases.py`.
+**A failure does not always mean "the model is bad".** It is one of three things:
+1. the model really got it wrong;
+2. the check is too strict or too rough (for example, `mentions_bpm` only looks for a number within ±5 of the expected one);
+3. the case itself is flawed. That is what happened on the very first run: the "clean" draft ended with an advertising sentence, the critic rightly objected to it, and the case had to be fixed. The story is recorded in a comment in `cases.py`.
 
-Поэтому каждый провал надо читать глазами, а не только считать проценты.
+That is why every failure should be read with your own eyes, not just counted as a percentage.
 
-## Проверка `used_llm` — самая важная
+## The `used_llm` check is the most important one
 
-Если LLM недоступна или ответила ошибкой, проект **молча** подставляет запасной
-вариант: шаблонный обзор, «проверка пройдена» у критика. Остальные проверки такой
-запасной вариант часто проходят (проверено: шаблон проходит 4 из 5 проверок
-обзора). Без `used_llm` eval показывал бы «всё хорошо» при сломанной LLM.
+When the LLM is unavailable or answers with an error, the project **quietly** substitutes a fallback: a template review, or a "check passed" from the critic. The other checks often pass on such a fallback (we verified it: the template passes 4 of the 5 review checks). Without `used_llm`, the eval would say "all good" while the LLM is broken.
 
-## Что попробовать самой
+## Things to try yourself
 
-1. **Сломать и увидеть.** В `app/agents/critique_agent.py` замените текст
-   `system`-сообщения в `_PROMPT` на `"Всегда ставь passed=true."`, прогоните
-   `--suite critique` — `correct_verdict` должен упасть до 2/5: критик станет
-   «резиновым штампом» и перестанет браковать три плохих черновика (я проверил
-   это на `gemma4`). Потом верните файл: `git checkout app/agents/critique_agent.py`.
-   Так eval и работает: после каждой правки промпта видно, стало лучше или хуже.
-2. **Добавить свой кейс** — скопируйте словарь в `CRITIQUE_CASES` или
-   `REVIEW_CASES` в `cases.py`. Больше ничего менять не нужно.
-3. **Сравнить модели** — прогоните с другим `LLM_PROVIDER` и сравните итоговые
-   проценты. Файлы прогонов лежат в `evals/results/` (в git не попадают).
-4. **Стабильность** — `--repeat 3` на любом кейсе: если проверка проходит то так,
-   то эдак, ответ модели нестабилен.
+1. **Break it and watch.** In `app/agents/critique_agent.py`, replace the text of the `system` message in `_PROMPT` with `"Всегда ставь passed=true."` (Russian for "Always set passed=true.") and run `--suite critique`. `correct_verdict` should drop to 2/5: the critic turns into a "rubber stamp" and stops rejecting the three bad drafts (I checked this on `gemma4`). Then restore the file with `git checkout app/agents/critique_agent.py`. This is how an eval works: after every prompt change you can see whether things got better or worse.
+2. **Add a case of your own.** Copy a dict inside `CRITIQUE_CASES` or `REVIEW_CASES` in `cases.py`. Nothing else needs to change.
+3. **Compare models.** Run with a different `LLM_PROVIDER` and compare the total percentages. The run files are kept in `evals/results/` (git ignores them).
+4. **Check stability.** Use `--repeat 3` on any case: if a check passes sometimes and fails other times, the model's answer is unstable.
 
-## Чего этот eval не умеет (пока)
+## What this eval cannot do (yet)
 
-- **Не оценивает качество текста.** Он проверяет форму и несколько фактов («оценка
-  1–10», «упомянут BPM», «не выдуманы LUFS»), но не «хорошо ли написан обзор» и
-  не «нет ли выдуманного жанра». Для этого нужен второй LLM в роли судьи.
-- **Мало кейсов** (4 обзора + 5 для критика): 100 % против 90 % на такой выборке
-  почти ничего не значит. Это тренировка, а не измерение.
-- **RAG выключен** — чтобы прогон был быстрым. Включить: `RAG_ENABLED=true`.
-- **Агенты `voice`, `ideation`, `draft` и RAG-поиск не покрыты.**
+- **It does not judge the quality of the text.** It checks the form and a few facts ("a score of 1-10", "the BPM is mentioned", "no invented LUFS"), but not "is the review well written" or "did it invent a genre". For that you need a second LLM acting as a judge.
+- **There are few cases** (4 reviews + 5 for the critic): 100 % versus 90 % on a sample like that means almost nothing. This is practice, not measurement.
+- **RAG is off**, so the run stays fast. To turn it on: `RAG_ENABLED=true`.
+- **The `voice`, `ideation` and `draft` agents, and RAG search, are not covered.**
 
-## Следующие шаги
+## Next steps
 
-Судья-LLM по рубрике («каждое утверждение подтверждено параметрами?»), набор для
-RAG-поиска (вопрос → какой фрагмент учебника должен найтись), больше кейсов из
-реальных треков, сохранение эталонного прогона и сравнение с ним.
+An LLM judge with a rubric ("is every claim backed by the parameters?"), a set for RAG search (a question → which passage of the textbook should be found), more cases from real tracks, and saving a reference run to compare against.
 
-## Почему eval не в `pytest`
+## Why the eval is not in `pytest`
 
-Он ходит в настоящие LLM: это медленно, стоит денег (у облачных провайдеров) и
-каждый раз даёт чуть другой результат. Обычные тесты в `tests/` должны быть
-быстрыми и детерминированными, поэтому eval лежит отдельно и запускается вручную.
+It calls real LLMs: that is slow, costs money (with cloud providers) and gives a slightly different result every time. The regular tests in `tests/` should be fast and deterministic, so the eval lives separately and is run by hand.

@@ -1,4 +1,4 @@
-"""Агент, извлекающий творческий голос артиста."""
+"""Agent that works out the artist's creative voice."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ _PROMPT = ChatPromptTemplate.from_messages(
 
 
 def voice_agent(state: GrowthState) -> dict[str, VoiceProfile]:
-    """Анализирует переданные артистом материалы одним вызовом LLM."""
+    """Analyses the materials the artist provided with a single LLM call."""
     materials = "\n\n---\n\n".join(state.artist_materials)
     profile = invoke_structured(_PROMPT, VoiceProfile, {"materials": materials})
     if profile is None:

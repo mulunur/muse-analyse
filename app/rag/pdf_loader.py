@@ -1,4 +1,4 @@
-"""Извлечение текста из PDF."""
+"""Extracting text from PDF files."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ logger = logging.getLogger(__name__)
 
 def extract_text_from_pdf(pdf_path: Path) -> list[dict[str, str | int]]:
     """
-    Извлекает текст из PDF постранично.
+    Extracts text from a PDF, page by page.
 
     Returns:
-        Список dict с ключами page (1-based) и text.
+        A list of dicts with the keys page (1-based) and text.
     """
     try:
         import fitz  # pymupdf

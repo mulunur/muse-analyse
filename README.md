@@ -2,6 +2,9 @@
 
 **Music analysis with AI reasoning.** A web app that pulls musical features out of audio files with [Essentia](https://essentia.upf.edu/) and turns them into a structured review written in Russian.
 
+Beyond creating a pet-project, my goal was to explore the potential of AI in dealing with music. By considering each step of development, I’ve arrived at a solution that has the capacity to deliver results based on isolated facts from music track. But question about holistic understanding of music remains open, see this article about it: https://www.lacuna.fm/blog/can-ai-understand-music
+
+
 ---
 
 ## Features
